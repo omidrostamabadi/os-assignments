@@ -1,0 +1,11 @@
+1. Init:
+I installed both vagrant and virtualbox by their official repos, not ubuntu standard repos because standard repos don't contain the latest version. Then, to enable code editing, I googled some stuff and finally found out to change vm.shared_folder in Vagrantfile, and I could edit source files on my host using vscode. There was no particular problem with init part.
+
+2. Tools:
+I've been using make, tmux, vim, and git for long, so there was no problem. I forgot gdb command because haven't used it for a while, so I wrote words program very fast and hoped I made a mistake in the program! And I did! Then I debugged words using gdb, it was very helpful to review everything.
+
+3. Practices:
+Words program was simple, I wrote it fast and quickly debugged with gdb. Later, I edited the initial version to use functions from word_count.h. 
+I read man page for getrlimit and could find how to get limits for stack and file descs. But for the number of processes, I had to do a bit of googling, the term was "RLIMIT_NPROC", didn't look to be process limit at the first!
+I read gdb tutorials for debugging words program, so the gdb part had no challenge but assembly layout was interesting to me.
+For compile/assemble/link part I just didn't know the meaning of flags and how to see a specific section. Googling helped me to find each falgs meaning and elf man page gave full info about each section. Finally, I read some stuff on PLTs and how dynamic libraries are linked against functions to explain "malloc" section.

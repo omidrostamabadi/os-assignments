@@ -1,0 +1,19 @@
+Line 1 specifies default target (if one runs make without any targets)
+The default target is "default", which itself depends on "executable"
+So in this case, running make without goals will run "executable" target
+
+Lines 3-8 are just variable definition.
+
+Line 8 says to build target "x", you need to build it from "x.c"
+For instance, if we call "make word_count" the stem (%) expands to word_count,
+so "make" tries to build this from "word_count.c" file.
+The "$@" expands to target name ("word_count" in the above example") and
+"$^" expands to all prerequisites ("word_count.c" in the above example)
+
+Line 13 defines a goal to clean the generated files (better to put a .PHONEY clean somewhere
+so that it is not mistaken with a file named "clean" if exists)
+
+Line 17 contains a rule to build the executable. It comiles all the sources (given the compiler
+flags) and links them with LIBRARIES and generates "words" executable.
+
+

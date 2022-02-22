@@ -1,0 +1,199 @@
+1.
+	34         subl    $1, %eax
+	35         subl    $12, %esp
+	36         pushl   %eax
+	37         call    recur
+	
+Lines 34 to 37. It indicates that variable i has been assigned to eax register,
+so when calling recur(i-1), using subl we calculate %eax - 1 and then in line 37
+we call recur.
+
+note: Line 36 preserves %eax register for the caller. The details indicating how to pass 
+arguments to a function are a part of ABI. In linux, the first argument is passed using %eax 
+register.
+
+
+2.
+According to the man page for elf, ".data holds initialized data that contribute to the
+program's memory image" and ".text holds the 'text', or executable instructions,
+of a program".
+For each object file, corresponding sections are shown below:
+
+objdump -s -j .text recurse.obj // command to show .text section
+
+recurse.obj:     file format elf32-i386
+
+Contents of section .text:
+ 0000 5589e553 83ec14e8 fcffffff 05010000  U..S............
+ 0010 008b5508 8955f483 ec08ff75 088d9000  ..U..U.....u....
+ 0020 00000052 89c3e8fc ffffff83 c410837d  ...R...........}
+ 0030 08007e14 8b450883 e80183ec 0c50e8fc  ..~..E.......P..
+ 0040 ffffff83 c410eb05 b8000000 008b5dfc  ..............].
+ 0050 c9c3  
+
+
+objdump -s -j .data recurse.obj // command to show .data section
+recurse.obj:     file format elf32-i386
+// No output                               ..
+
+
+Repeating the same instruction for map.obj outputs:
+
+map.obj:     file format elf32-i386
+
+Contents of section .text:
+ 0000 8d4c2404 83e4f0ff 71fc5589 e5535183  .L$.....q.U..SQ.
+ 0010 ec10e8fc ffffff81 c3020000 00c745ec  ..............E.
+ 0020 00000000 83ec0c6a 64e8fcff ffff83c4  .......jd.......
+ 0030 108945f0 83ec0c6a 64e8fcff ffff83c4  ..E....jd.......
+ 0040 108945f4 83ec0c6a 03e8fcff ffff83c4  ..E....j........
+ 0050 10b80000 00008d65 f8595b5d 8d61fcc3  .......e.Y[].a..
+ 
+
+map.obj:     file format elf32-i386
+
+Contents of section .data:
+ 0000 07000000                             ....    
+ 
+3.
+objdump --syms filename
+
+4.
+g: global identifier
+O: the symbol is an object (As another example, F refers to function)
+*UND*: The symbol is referenced here but not defined
+
+5.
+Until linking against std libs, there will be no information about malloc. But after linking we have an object file, so we use -D flag of objdump to disassemble and see the address at which callq calls malloc function.
+So if we do this, we'll have:
+000000000000560 <malloc@plt>:
+ 560:   ff 25 6a 0a 20 00       jmpq   *0x200a6a(%rip)        # 200fd0 <malloc@GLIBC_2.2.5>
+ 566:   68 01 00 00 00          pushq  $0x1
+ 56b:   e9 d0 ff ff ff          jmpq   540 <.plt>
+
+Malloc is a dynamically linked function, so calling it would be a little bit different from statically linked functions. We see for calling malloc we do "callq 560" but the code for malloc function does not really start at 560. Instead, it is a dynamic reference to the malloc function (200fd0). The exact addresses are resolved on runtime by runtime linker using procedure linkage table (PLT).
+
+6.
+In recurse.out we can find the address since the recur function is defined there.
+
+recurse.obj:     file format elf32-i386
+
+SYMBOL TABLE:
+00000000 l    df *ABS*  00000000 recurse.c
+00000000 l    d  .text  00000000 .text
+00000000 l    d  .data  00000000 .data
+00000000 l    d  .bss   00000000 .bss
+00000000 l    d  .rodata        00000000 .rodata
+00000000 l    d  .text.__x86.get_pc_thunk.ax    00000000 .text.__x86.get_pc_thunk.ax
+00000000 l    d  .note.GNU-stack        00000000 .note.GNU-stack
+00000000 l    d  .eh_frame      00000000 .eh_frame
+00000000 l    d  .comment       00000000 .comment
+00000000 l    d  .group 00000000 .group
+00000000 g     F .text  00000052 recur
+00000000 g     F .text.__x86.get_pc_thunk.ax    00000000 .hidden __x86.get_pc_thunk.ax
+00000000         *UND*  00000000 _GLOBAL_OFFSET_TABLE_
+00000000         *UND*  00000000 printf
+
+7.
+As an example, after linking, the address for recur is updated in map, because the info for that symbol could be found in recurse.obj file.
+
+
+map.obj:     file format elf32-i386
+
+SYMBOL TABLE:
+00000000 l    df *ABS*  00000000 map.c
+00000000 l    d  .text  00000000 .text
+00000000 l    d  .data  00000000 .data
+00000000 l    d  .bss   00000000 .bss
+00000000 l    d  .text.__x86.get_pc_thunk.bx    00000000 .text.__x86.get_pc_thunk.bx
+00000000 l    d  .note.GNU-stack        00000000 .note.GNU-stack
+00000000 l    d  .eh_frame      00000000 .eh_frame
+00000000 l    d  .comment       00000000 .comment
+00000000 l    d  .group 00000000 .group
+00000004       O *COM*  00000004 foo
+00000000 g     O .data  00000004 stuff
+00000000 g     F .text  00000060 main
+00000000 g     F .text.__x86.get_pc_thunk.bx    00000000 .hidden __x86.get_pc_thunk.bx
+00000000         *UND*  00000000 _GLOBAL_OFFSET_TABLE_
+00000000         *UND*  00000000 malloc
+00000000         *UND*  00000000 recur
+
+
+
+
+
+
+map:     file format elf32-i386
+
+SYMBOL TABLE:
+00000154 l    d  .interp        00000000              .interp
+00000168 l    d  .note.ABI-tag  00000000              .note.ABI-tag
+00000188 l    d  .note.gnu.build-id     00000000              .note.gnu.build-id
+000001ac l    d  .gnu.hash      00000000              .gnu.hash
+000001cc l    d  .dynsym        00000000              .dynsym
+0000025c l    d  .dynstr        00000000              .dynstr
+00000300 l    d  .gnu.version   00000000              .gnu.version
+00000314 l    d  .gnu.version_r 00000000              .gnu.version_r
+00000344 l    d  .rel.dyn       00000000              .rel.dyn
+00000384 l    d  .rel.plt       00000000              .rel.plt
+0000039c l    d  .init  00000000              .init
+000003c0 l    d  .plt   00000000              .plt
+00000400 l    d  .plt.got       00000000              .plt.got
+00000410 l    d  .text  00000000              .text
+00000674 l    d  .fini  00000000              .fini
+00000688 l    d  .rodata        00000000              .rodata
+00000694 l    d  .eh_frame_hdr  00000000              .eh_frame_hdr
+000006d8 l    d  .eh_frame      00000000              .eh_frame
+00001ed4 l    d  .init_array    00000000              .init_array
+00001ed8 l    d  .fini_array    00000000              .fini_array
+00001edc l    d  .dynamic       00000000              .dynamic
+00001fd4 l    d  .got   00000000              .got
+00002000 l    d  .data  00000000              .data
+0000200c l    d  .bss   00000000              .bss
+00000000 l    d  .comment       00000000              .comment
+00000000 l    df *ABS*  00000000              crtstuff.c
+00000460 l     F .text  00000000              deregister_tm_clones
+000004a0 l     F .text  00000000              register_tm_clones
+000004f0 l     F .text  00000000              __do_global_dtors_aux
+0000200c l     O .bss   00000001              completed.7282
+00001ed8 l     O .fini_array    00000000              __do_global_dtors_aux_fini_array_entry
+00000540 l     F .text  00000000              frame_dummy
+00001ed4 l     O .init_array    00000000              __frame_dummy_init_array_entry
+00000000 l    df *ABS*  00000000              map.c
+00000000 l    df *ABS*  00000000              recurse.c
+00000000 l    df *ABS*  00000000              crtstuff.c
+000007f4 l     O .eh_frame      00000000              __FRAME_END__
+00000000 l    df *ABS*  00000000
+00001ed8 l       .init_array    00000000              __init_array_end
+00001edc l     O .dynamic       00000000              _DYNAMIC
+00001ed4 l       .init_array    00000000              __init_array_start
+00000694 l       .eh_frame_hdr  00000000              __GNU_EH_FRAME_HDR
+00001fd4 l     O .got   00000000              _GLOBAL_OFFSET_TABLE_
+00000670 g     F .text  00000002              __libc_csu_fini
+00000000  w      *UND*  00000000              _ITM_deregisterTMCloneTable
+00000450 g     F .text  00000004              .hidden __x86.get_pc_thunk.bx
+00002000  w      .data  00000000              data_start
+00000000       F *UND*  00000000              printf@@GLIBC_2.0
+0000200c g       .data  00000000              _edata
+00000674 g     F .fini  00000000              _fini
+000005ad g     F .text  00000052              recur
+00000549 g     F .text  00000000              .hidden __x86.get_pc_thunk.dx
+00000000  w    F *UND*  00000000              __cxa_finalize@@GLIBC_2.1.3
+00002008 g     O .data  00000004              stuff
+00000000       F *UND*  00000000              malloc@@GLIBC_2.0
+00002000 g       .data  00000000              __data_start
+00000000  w      *UND*  00000000              __gmon_start__
+00002004 g     O .data  00000000              .hidden __dso_handle
+0000068c g     O .rodata        00000004              _IO_stdin_used
+00000000       F *UND*  00000000              __libc_start_main@@GLIBC_2.0
+00000610 g     F .text  0000005d              __libc_csu_init
+00002010 g     O .bss   00000004              foo
+00002014 g       .bss   00000000              _end
+00000410 g     F .text  00000000              _start
+00000688 g     O .rodata        00000004              _fp_hw
+0000200c g       .bss   00000000              __bss_start
+0000054d g     F .text  00000060              main
+000005ff g     F .text  00000000              .hidden __x86.get_pc_thunk.ax
+0000200c g     O .data  00000000              .hidden __TMC_END__
+00000000  w      *UND*  00000000              _ITM_registerTMCloneTable
+0000039c g     F .init  00000000              _init

@@ -1,0 +1,130 @@
+GDB Practice:
+
+آ.
+gdb map // run gdb to debug map program
+ب.
+break 16 // breakpoint at line 16 of map.c
+ج.
+run // run the program until it reaches breakpoint
+د.
+print argv // prints the address of argv that is ((char **) 0x7fffffffe3b8) in my machine
+    *
+
+ه.
+x/s *argv // prints *argv, which is a string containing full path of the program
+*argv = /home/vagrant/code/handouts/HW0/map
+    *
+
+و.
+break recur // breakpoint on recur function
+c // continue execution until next breakpoint
+ز.
+info address recur // print address of the recur function
+Symbol "recur" is a function at address 0x5555555546cd
+    *
+
+ح.
+?? This seems to be repetitive. It's just like "و" part. ??
+// I assumed next call to recur is asked
+c // continue execution until next recur
+ط.
+break recurse.c:8 // break at if statement
+c // continue to if statement
+ی.
+layout asm // change to assembly layout
+ک
+The instructions look like this:
+
+cmpl   $0x0,-0x14(%rbp)               <---- current inst                              
+jle    0x555555554709 <recur+60>                               │
+mov    -0x14(%rbp),%eax                                        │
+sub    $0x1,%eax                                               │
+mov    %eax,%edi                                               │
+callq  0x5555555546cd <recur>  
+
+stepi // We enter enough stepi to move on the instruction level and reach callq
+ل.
+info registers // print register values just before execute callq instruction
+
+rax            0x1      1
+rbx            0x0      0
+rcx            0x0      0
+rdx            0x0      0
+rsi            0x555555756340   93824994337600
+rdi            0x1      1
+rbp            0x7fffffffe250   0x7fffffffe250
+rsp            0x7fffffffe230   0x7fffffffe230
+r8             0x0      0
+r9             0x0      0
+r10            0x0      0
+r11            0x246    582
+r12            0x555555554580   93824992232832
+r13            0x7fffffffe3a0   140737488348064
+r14            0x0      0
+r15            0x0      0
+rip            0x555555554702   0x555555554702 <recur+53>
+eflags         0x202    [ IF ]
+cs             0x33     51
+ss             0x2b     43
+ds             0x0      0
+es             0x0      0
+fs             0x0      0
+gs             0x0      0
+    *
+
+م.
+stepi // nexti will not work here, it will pass over function call
+
+ن.
+layout src // back to c source layout
+س.
+backtrace // print call stack
+
+(gdb) backtrace 
+#0  recur (i=1) at recurse.c:5
+#1  0x0000555555554707 in recur (i=2) at recurse.c:9
+#2  0x0000555555554707 in recur (i=3) at recurse.c:9
+#3  0x00005555555546c6 in main (argc=1, argv=0x7fffffffe3a8) at map.c:23
+ع.
+disable // disable all previous breakpoints
+break recur // add a new breakpoint for recur function
+condition 4 i==0 // add a condition for the breakpoint we just added
+ف.
+c // continue to reach the breakpoint
+ص.
+backtrace // print call stack
+
+#0  recur (i=0) at recurse.c:5
+#1  0x0000555555554707 in recur (i=1) at recurse.c:9
+#2  0x0000555555554707 in recur (i=2) at recurse.c:9
+#3  0x0000555555554707 in recur (i=3) at recurse.c:9
+#4  0x00005555555546c6 in main (argc=1, argv=0x7fffffffe3b8) at map.c:23
+
+ق.
+frame 4 // go to main frame
+#4  0x00005555555546c6 in main (argc=1, argv=0x7fffffffe3b8) at map.c:23
+The argc has a value of 1
+ر.
+disable // disable all breakpoints
+break recurse.c:12 // break at return statement
+frame 0 // get back to current frame
+c // continue to reach return statement
+ش.
+layout asm
+ت.
+retq
+    *
+
+ث.
+layout src
+خ.
+In assembly layout, we note that the address for retq is 0x000055555555470f
+so we set a breakpoint on that usint: break *0x000055555555470f to catch next three calls.
+c //
+c //
+c //
+ذ.
+disable // disable all breakpoints
+c // continue till end
+ض.
+quit // quit gdb
