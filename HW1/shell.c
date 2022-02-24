@@ -28,7 +28,7 @@ int cmd_help(tok_t arg[]);
 
 int cmd_pwd(tok_t arg[]);
 
-int cmd_cd(tok_t arg[]);
+int cmd_chdir(tok_t arg[]);
 
 
 /* Command Lookup table */
@@ -43,7 +43,7 @@ fun_desc_t cmd_table[] = {
   {cmd_help, "?", "show this help menu"},
   {cmd_quit, "quit", "quit the command shell"},
   {cmd_pwd, "pwd", "print working directory"},
-  {cmd_cd, "cd", "change working directory"},
+  {cmd_chdir, "chdir", "change working directory"},
 };
 
 int cmd_help(tok_t arg[]) {
@@ -62,10 +62,10 @@ int cmd_pwd(tok_t arg[]) {
   return 0;
 }
 
-int cmd_cd(tok_t arg[]) {
+int cmd_chdir(tok_t arg[]) {
   int result = chdir(arg[0]);
   if(result != 0) {
-    fprintf(stderr, "cd failed, %s is not a valid directory\n", arg[0]);
+    fprintf(stderr, "chdir failed, %s is not a valid directory\n", arg[0]);
   }
   return result;
 }
@@ -146,7 +146,18 @@ int shell (int argc, char *argv[]) {
     fundex = lookup(t[0]); /* Is first token a shell literal */
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
     else {
-      fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n");
+      //fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n");
+      pid_t pid = fork();
+      if(pid == 0) { // child process executes program
+        int result = execv(t[0], &t[0]); // returns only if error
+        fprintf(stderr, "Failed to run program %s\n", t[0]);
+        exit(0);
+      }
+      else { // parent waits for the child
+        int stat_loc;
+        int options = 0; // no flags
+        waitpid(pid, &stat_loc, options);
+      }
     }
     // fprintf(stdout, "%d: ", lineNum);
   }
