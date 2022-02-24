@@ -11,6 +11,7 @@
 #define FALSE 0
 #define TRUE 1
 #define INPUT_STRING_SIZE 80
+#define MAX_PATH_SIZE 100
 
 #include "io.h"
 #include "parse.h"
@@ -25,6 +26,8 @@ int cmd_quit(tok_t arg[]) {
 
 int cmd_help(tok_t arg[]);
 
+int cmd_pwd(tok_t arg[]);
+
 
 /* Command Lookup table */
 typedef int cmd_fun_t (tok_t args[]); /* cmd functions take token array and return int */
@@ -37,6 +40,7 @@ typedef struct fun_desc {
 fun_desc_t cmd_table[] = {
   {cmd_help, "?", "show this help menu"},
   {cmd_quit, "quit", "quit the command shell"},
+  {cmd_pwd, "pwd", "print working directory"},
 };
 
 int cmd_help(tok_t arg[]) {
@@ -45,6 +49,13 @@ int cmd_help(tok_t arg[]) {
     printf("%s - %s\n",cmd_table[i].cmd, cmd_table[i].doc);
   }
   return 1;
+}
+
+int cmd_pwd(tok_t arg[]) {
+  char *abs_path = (char*)malloc(MAX_PATH_SIZE * sizeof(char));
+  abs_path = getcwd(abs_path, MAX_PATH_SIZE);
+  printf("%s\n", abs_path);
+  return 0;
 }
 
 int lookup(char cmd[]) {
