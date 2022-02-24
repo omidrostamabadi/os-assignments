@@ -11,12 +11,17 @@
 #define FALSE 0
 #define TRUE 1
 #define INPUT_STRING_SIZE 80
-#define MAX_PATH_SIZE 100
+#define MAX_PATH_SIZE 300
+#define MAX_FILE_NAME 50
 
 #include "io.h"
 #include "parse.h"
 #include "process.h"
 #include "shell.h"
+
+/* some helper functions */
+
+void get_full_path(const char *file, char *full_path);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -147,9 +152,15 @@ int shell (int argc, char *argv[]) {
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
     else {
       //fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n");
+      char *full_path = (char*)malloc(MAX_PATH_SIZE);
+      get_full_path(t[0], full_path);
+      if(strcmp(full_path, "/") == 0) { // could not find the file
+        printf("file %s not found\n", t[0]);
+        continue;
+      }
       pid_t pid = fork();
       if(pid == 0) { // child process executes program
-        int result = execv(t[0], &t[0]); // returns only if error
+        int result = execv(full_path, &t[0]); // returns only if error
         fprintf(stderr, "Failed to run program %s\n", t[0]);
         exit(0);
       }
@@ -162,4 +173,53 @@ int shell (int argc, char *argv[]) {
     // fprintf(stdout, "%d: ", lineNum);
   }
   return 0;
+}
+
+/* some helper functions */
+
+/* 
+* get the path of a program to execute
+* if it is the full path, return
+* else search every directory in PATH envvar for the program
+* if the full_path is '/', indicates that file has not been found
+*/
+void get_full_path(const char *file, char *full_path) {
+  // if file contains '/' in it, it is a full path
+  if(strchr(file, '/') != NULL) {
+    strcpy(full_path, file);
+    return;
+  }
+
+  // add a '/' to the beginning of the file
+  // use this aug_file name to concat path options
+  char *aug_file = (char*)malloc(MAX_FILE_NAME * sizeof(char));
+  strcpy(aug_file, "/");
+  aug_file = strcat(aug_file, file);
+
+  // get the PATH envvar and tokenize it into paths
+  const char *path_env;
+  path_env = getenv("PATH");
+  char *tmp_path = (char*)malloc(MAX_PATH_SIZE * sizeof(char));
+  strcpy(tmp_path, path_env);
+  tok_t *paths = getToks(tmp_path);
+
+  // check all the paths for file
+  // return on first match
+  int path_idx = 0;
+  int found = FALSE;
+  full_path = strcpy(full_path, paths[path_idx]);
+  while(paths[path_idx] != NULL) { // try all paths
+    full_path = strcpy(full_path, paths[path_idx]);
+    full_path = strcat(full_path, aug_file);
+    if(access(full_path, F_OK) == 0) {
+      printf("Found at %s\n", full_path);
+      found = TRUE;
+      break;
+    }
+    path_idx++;
+  }
+  free(tmp_path);
+  if(found == FALSE) { // not found the file
+    strcpy(full_path, "/");
+  } 
 }
