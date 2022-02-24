@@ -28,6 +28,8 @@ int cmd_help(tok_t arg[]);
 
 int cmd_pwd(tok_t arg[]);
 
+int cmd_cd(tok_t arg[]);
+
 
 /* Command Lookup table */
 typedef int cmd_fun_t (tok_t args[]); /* cmd functions take token array and return int */
@@ -41,6 +43,7 @@ fun_desc_t cmd_table[] = {
   {cmd_help, "?", "show this help menu"},
   {cmd_quit, "quit", "quit the command shell"},
   {cmd_pwd, "pwd", "print working directory"},
+  {cmd_cd, "cd", "change working directory"},
 };
 
 int cmd_help(tok_t arg[]) {
@@ -55,7 +58,16 @@ int cmd_pwd(tok_t arg[]) {
   char *abs_path = (char*)malloc(MAX_PATH_SIZE * sizeof(char));
   abs_path = getcwd(abs_path, MAX_PATH_SIZE);
   printf("%s\n", abs_path);
+  free(abs_path);
   return 0;
+}
+
+int cmd_cd(tok_t arg[]) {
+  int result = chdir(arg[0]);
+  if(result != 0) {
+    fprintf(stderr, "cd failed, %s is not a valid directory\n", arg[0]);
+  }
+  return result;
 }
 
 int lookup(char cmd[]) {
