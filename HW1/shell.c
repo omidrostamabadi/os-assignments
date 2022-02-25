@@ -7,6 +7,8 @@
 #include <termios.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define FALSE 0
 #define TRUE 1
@@ -19,9 +21,22 @@
 #include "process.h"
 #include "shell.h"
 
+
+/* this structure holds info about redirection
+* keeps two flags for input/output redirection
+* also stores two file names for each redirection
+*/
+typedef struct redirection_info{
+  char *input_file; // input file to redirect from
+  char *output_file; // output file to redirect to
+  int in_redir; // if input is redirected
+  int out_redir; // if output is redirected
+} redir_info_t;
+
 /* some helper functions */
 
 void get_full_path(const char *file, char *full_path);
+void get_redirection_info(tok_t *toks, redir_info_t *rinfo);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -34,6 +49,8 @@ int cmd_help(tok_t arg[]);
 int cmd_pwd(tok_t arg[]);
 
 int cmd_cd(tok_t arg[]);
+
+
 
 
 /* Command Lookup table */
@@ -158,6 +175,30 @@ int shell (int argc, char *argv[]) {
         printf("file %s not found\n", t[0]);
         continue;
       }
+      /* check input/output redirection */
+      redir_info_t redir_info;
+      get_redirection_info(t, &redir_info);
+      int stdin_fd = dup(STDIN_FILENO);
+      int stdout_fd = dup(STDOUT_FILENO);
+
+      int fid_redir_in = open(redir_info.input_file, O_RDONLY);
+      if(redir_info.in_redir == TRUE) { // if input is redirected
+        int ret_val = dup2(fid_redir_in, STDIN_FILENO);
+        if(ret_val < 0) {
+          printf("Could not read from file %s\n", redir_info.input_file);
+          continue;
+        }
+      }
+      int fid_redir_out = open(redir_info.output_file, O_WRONLY | O_CREAT);
+      if(redir_info.out_redir == TRUE) { // if output is redirected
+          int ret_val = dup2(fid_redir_out, STDOUT_FILENO);
+          if(ret_val < 0) {
+            printf("Could not open file %s for output\n", redir_info.output_file);
+            continue;
+          }
+        }
+      
+
       pid_t pid = fork();
       if(pid == 0) { // child process executes program
         int result = execv(full_path, &t[0]); // returns only if error
@@ -168,6 +209,15 @@ int shell (int argc, char *argv[]) {
         int stat_loc;
         int options = 0; // no flags
         waitpid(pid, &stat_loc, options);
+        if(redir_info.in_redir == TRUE) {
+          close(fid_redir_in);
+          dup2(stdin_fd, STDIN_FILENO);
+        }
+        if(redir_info.out_redir == TRUE) {
+          close(fid_redir_out);
+          dup2(stdout_fd, STDOUT_FILENO);  
+        }
+        
       }
     }
     // fprintf(stdout, "%d: ", lineNum);
@@ -212,7 +262,7 @@ void get_full_path(const char *file, char *full_path) {
     full_path = strcpy(full_path, paths[path_idx]);
     full_path = strcat(full_path, aug_file);
     if(access(full_path, F_OK) == 0) {
-      printf("Found at %s\n", full_path);
+      //printf("Found at %s\n", full_path);
       found = TRUE;
       break;
     }
@@ -222,4 +272,32 @@ void get_full_path(const char *file, char *full_path) {
   if(found == FALSE) { // not found the file
     strcpy(full_path, "/");
   } 
+}
+
+/*
+* fill up rinfo struct with information on redirection
+* specifiy if input/output are redirected
+* if there is a redirection, set corresponding file names
+*/
+void get_redirection_info(tok_t *toks, redir_info_t *rinfo) {
+  rinfo->in_redir = FALSE;
+  rinfo->out_redir = FALSE;
+  int tok_index = 0;
+  while(toks[tok_index] != NULL) { // go over all tokens
+    if(strcmp(toks[tok_index], ">") == 0) { // check output redirection
+      rinfo->out_redir = TRUE;
+      // assume file name immediately follows '>'
+      rinfo->output_file = toks[tok_index + 1];
+      toks[tok_index] = NULL;
+      toks[tok_index + 1] = NULL;
+    }
+    else if(strcmp(toks[tok_index], "<") == 0) { // check input redirection
+      rinfo->in_redir = TRUE;
+      // assume file name immediately follows '<'
+      rinfo->input_file = toks[tok_index + 1];
+      toks[tok_index] = NULL;
+      toks[tok_index + 1] = NULL;
+    }
+    tok_index++;
+  }
 }
