@@ -189,7 +189,8 @@ int shell (int argc, char *argv[]) {
           continue;
         }
       }
-      int fid_redir_out = open(redir_info.output_file, O_WRONLY | O_CREAT);
+      int fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
+      S_IWGRP | S_IRGRP | S_IRUSR | S_IWUSR | S_IROTH);
       if(redir_info.out_redir == TRUE) { // if output is redirected
           int ret_val = dup2(fid_redir_out, STDOUT_FILENO);
           if(ret_val < 0) {
