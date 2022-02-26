@@ -178,20 +178,22 @@ int shell (int argc, char *argv[]) {
       /* check input/output redirection */
       redir_info_t redir_info;
       get_redirection_info(t, &redir_info);
-      int stdin_fd = dup(STDIN_FILENO);
-      int stdout_fd = dup(STDOUT_FILENO);
+      int stdin_fd = dup(STDIN_FILENO); // to be restored later
+      int stdout_fd = dup(STDOUT_FILENO); // to be restored later
 
-      int fid_redir_in = open(redir_info.input_file, O_RDONLY);
+      int fid_redir_in;
       if(redir_info.in_redir == TRUE) { // if input is redirected
+        fid_redir_in = open(redir_info.input_file, O_RDONLY);
         int ret_val = dup2(fid_redir_in, STDIN_FILENO);
         if(ret_val < 0) {
           printf("Could not read from file %s\n", redir_info.input_file);
           continue;
         }
       }
-      int fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
-      S_IWGRP | S_IRGRP | S_IRUSR | S_IWUSR | S_IROTH);
+      int fid_redir_out;
       if(redir_info.out_redir == TRUE) { // if output is redirected
+          fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
+          S_IWGRP | S_IRGRP | S_IRUSR | S_IWUSR | S_IROTH);
           int ret_val = dup2(fid_redir_out, STDOUT_FILENO);
           if(ret_val < 0) {
             printf("Could not open file %s for output\n", redir_info.output_file);
