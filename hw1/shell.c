@@ -37,6 +37,7 @@ typedef struct redirection_info{
 
 void get_full_path(const char *file, char *full_path);
 void get_redirection_info(tok_t *toks, redir_info_t *rinfo);
+void handle_signals(int sig, siginfo_t *sig_info, void *void_var);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -163,6 +164,14 @@ int shell (int argc, char *argv[]) {
 
   lineNum=0;
   // fprintf(stdout, "%d: ", lineNum);
+  struct sigaction act;
+  sigemptyset(&act.sa_mask);
+  act.sa_flags = 0;
+  act.sa_handler = handle_signals;
+  int sig_rtn = sigaction(SIGTSTP, &act, NULL);
+  if(sig_rtn != 0) {
+    printf("Error occured in sigaction call\n");
+  }
   while ((s = freadln(stdin))){
     t = getToks(s); /* break the line into tokens */
     fundex = lookup(t[0]); /* Is first token a shell literal */
@@ -204,11 +213,19 @@ int shell (int argc, char *argv[]) {
 
       pid_t pid = fork();
       if(pid == 0) { // child process executes program
+        pid_t my_pid = getpid();
+        setpgid(0, my_pid); // set this process as the head of a process group
+        pid_t pgid = getpgrp();
+        printf("Child: pid=%d pgid=%d\n", my_pid, pgid);
         int result = execv(full_path, &t[0]); // returns only if error
         fprintf(stderr, "Failed to run program %s\n", t[0]);
         exit(0);
       }
       else { // parent waits for the child
+        pid_t my_pid = getpid();
+        pid_t pgid = getpgrp();
+        printf("Parent: pid=%d pgid=%d\n", my_pid, pgid);
+
         int stat_loc;
         int options = 0; // no flags
         waitpid(pid, &stat_loc, options);
@@ -302,5 +319,11 @@ void get_redirection_info(tok_t *toks, redir_info_t *rinfo) {
       toks[tok_index + 1] = NULL;
     }
     tok_index++;
+  }
+}
+
+void handle_signals(int sig, siginfo_t *sig_info, void *void_var) {
+  if(sig == SIGTSTP) {
+    printf("Received a SIGTSTP from terminal\n");
   }
 }
