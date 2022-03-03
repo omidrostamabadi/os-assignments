@@ -37,7 +37,9 @@ typedef struct redirection_info{
 
 void get_full_path(const char *file, char *full_path);
 void get_redirection_info(tok_t *toks, redir_info_t *rinfo);
+int check_background(tok_t *toks);
 void handle_signals(int sig, siginfo_t *sig_info, void *void_var);
+void child_sig(int sig, siginfo_t *sig_info, void *void_var);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -165,14 +167,35 @@ int shell (int argc, char *argv[]) {
   lineNum=0;
   // fprintf(stdout, "%d: ", lineNum);
   struct sigaction act;
-  sigemptyset(&act.sa_mask);
-  act.sa_flags = 0;
-  act.sa_handler = handle_signals;
-  int sig_rtn = sigaction(SIGTSTP, &act, NULL);
-  if(sig_rtn != 0) {
-    printf("Error occured in sigaction call\n");
-  }
+  int run_in_background = FALSE;
+  /* the shell ignores this signals */
+  signal(SIGTTOU, SIG_IGN);
+  signal(SIGTTIN, SIG_IGN);
+  signal(SIGTSTP, SIG_IGN);
+  signal(SIGINT, SIG_IGN);
+  signal(SIGQUIT, SIG_IGN);
+//   const char *ch_log = "ch_log.txt";
+//   const char *pa_log = "pa_log.txt";
+//   sigemptyset(&act.sa_mask);
+//   act.sa_flags = 0;
+//   act.sa_handler = SIG_IGN;
+//   int sig_rtn = sigaction(SIGTSTP, &act, NULL);
+//   //sig_rtn |= sigaction(SIGINT, &act, NULL);
+//   act.sa_handler = SIG_IGN;
+//   sig_rtn |= sigaction(SIGTTOU, &act, NULL);
+//   sig_rtn |= sigaction(SIGTTIN, &act, NULL);
+//  // act.sa_handler = handle_signals;
+//   sig_rtn |= sigaction(SIGCHLD, &act, NULL);
+  
+  // shell_tmodes.c_lflag |= TOSTOP;
+  // tcsetattr(shell_terminal, TCSANOW, &shell_tmodes);
+  // printf("Terminal optins: %d %d\n",
+  // shell_tmodes.c_lflag, shell_tmodes.c_lflag & TOSTOP);
   while ((s = freadln(stdin))){
+    if(!strcmp(s, "\n")) {
+    //  printf("Empty input\n");
+      continue;
+    }
     t = getToks(s); /* break the line into tokens */
     fundex = lookup(t[0]); /* Is first token a shell literal */
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
@@ -184,60 +207,69 @@ int shell (int argc, char *argv[]) {
         printf("file %s not found\n", t[0]);
         continue;
       }
+
+      /* check if run in background */
+      run_in_background = check_background(t);
       /* check input/output redirection */
       redir_info_t redir_info;
       get_redirection_info(t, &redir_info);
       int stdin_fd = dup(STDIN_FILENO); // to be restored later
       int stdout_fd = dup(STDOUT_FILENO); // to be restored later
 
-      int fid_redir_in;
-      if(redir_info.in_redir == TRUE) { // if input is redirected
-        fid_redir_in = open(redir_info.input_file, O_RDONLY);
-        int ret_val = dup2(fid_redir_in, STDIN_FILENO);
-        if(ret_val < 0) {
-          printf("Could not read from file %s\n", redir_info.input_file);
-          continue;
-        }
-      }
-      int fid_redir_out;
-      if(redir_info.out_redir == TRUE) { // if output is redirected
-          fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
-          S_IWGRP | S_IRGRP | S_IRUSR | S_IWUSR | S_IROTH);
-          int ret_val = dup2(fid_redir_out, STDOUT_FILENO);
-          if(ret_val < 0) {
-            printf("Could not open file %s for output\n", redir_info.output_file);
-            continue;
-          }
-        }
-      
 
       pid_t pid = fork();
       if(pid == 0) { // child process executes program
+        signal(SIGTSTP, SIG_DFL); // child should not ignore SIGTSTP
+        signal(SIGINT, SIG_DFL); // child should not ignore SIGINT
+        signal(SIGQUIT, SIG_DFL); // child should not ignore SIGQUIT
+        int fid_redir_in;
+        if(redir_info.in_redir == TRUE) { // if input is redirected
+          fid_redir_in = open(redir_info.input_file, O_RDONLY);
+          int ret_val = dup2(fid_redir_in, STDIN_FILENO);
+          if(ret_val < 0) {
+          //  printf("Could not read from file %s\n", redir_info.input_file);
+            continue;
+          }
+        }
+        int fid_redir_out;
+        if(redir_info.out_redir == TRUE) { // if output is redirected
+            fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
+            S_IWGRP | S_IRGRP | S_IRUSR | S_IWUSR | S_IROTH);
+            int ret_val = dup2(fid_redir_out, STDOUT_FILENO);
+            if(ret_val < 0) {
+            //  printf("Could not open file %s for output\n", redir_info.output_file);
+              continue;
+            }
+          }
+
         pid_t my_pid = getpid();
         setpgid(0, my_pid); // set this process as the head of a process group
         pid_t pgid = getpgrp();
-        printf("Child: pid=%d pgid=%d\n", my_pid, pgid);
+        if(run_in_background == FALSE) { // put into foreground
+          int val_ret = tcsetpgrp(shell_terminal, pgid);
+        }
+        else { // should not ignore TTOU and TTIN if in background
+          signal(SIGTTIN, SIG_DFL);
+          signal(SIGTTOU, SIG_DFL);
+        }
         int result = execv(full_path, &t[0]); // returns only if error
-        fprintf(stderr, "Failed to run program %s\n", t[0]);
-        exit(0);
+       // fprintf(my_fd, "Failed to run program %s\n", t[0]);
+        exit(1); // execv only return on fail
       }
       else { // parent waits for the child
         pid_t my_pid = getpid();
         pid_t pgid = getpgrp();
-        printf("Parent: pid=%d pgid=%d\n", my_pid, pgid);
 
-        int stat_loc;
-        int options = 0; // no flags
-        waitpid(pid, &stat_loc, options);
-        if(redir_info.in_redir == TRUE) {
-          close(fid_redir_in);
-          dup2(stdin_fd, STDIN_FILENO);
+        if(run_in_background == FALSE) {
+          int stat_loc;
+          int options = WUNTRACED; // no flags
+          waitpid(pid, &stat_loc, options);
         }
-        if(redir_info.out_redir == TRUE) {
-          close(fid_redir_out);
-          dup2(stdout_fd, STDOUT_FILENO);  
-        }
-        
+        /* foreground process finished, or want to run
+        a process in background
+        so take control of the terminal */
+        int val_ret = tcsetpgrp(shell_terminal, shell_pgid);
+        int cntrl = tcgetpgrp(shell_terminal);
       }
     }
     // fprintf(stdout, "%d: ", lineNum);
@@ -322,8 +354,44 @@ void get_redirection_info(tok_t *toks, redir_info_t *rinfo) {
   }
 }
 
+int check_background(tok_t *toks) {
+  int tok_index = 0;
+  tok_t last_tok = NULL;
+  while(toks[tok_index] != NULL) {
+    last_tok = toks[tok_index];
+    tok_index++;
+  }
+  if(!strcmp(last_tok, "&")) {
+    toks[tok_index - 1] = NULL; // '&' shouldn't be passed to executable
+    return TRUE; // should run process in background if '&' is at the end
+  }
+  else {
+    return FALSE;
+  }
+}
+
 void handle_signals(int sig, siginfo_t *sig_info, void *void_var) {
   if(sig == SIGTSTP) {
     printf("Received a SIGTSTP from terminal\n");
+  }
+  else if(sig == SIGINT) {
+    printf("Received a SIGINT from terminal\n");
+  }
+  else if(sig == SIGCHLD) {
+    printf("CHILD SIGNAL\n");
+    //printf("", sig_info->)
+  }
+}
+
+void child_sig(int sig, siginfo_t *sig_info, void *void_var) {
+  FILE *fd = fopen("child_log.txt", "w");
+  if(sig == SIGTTOU) {
+    fprintf(fd, "Got TTOU in child\n");
+  }
+  else if(sig == SIGTTIN) {
+    fprintf(fd, "Got TTIN in child\n");
+  }
+  else {
+    fprintf(fd, "Got another in child\n");
   }
 }
