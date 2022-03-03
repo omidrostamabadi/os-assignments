@@ -15,14 +15,25 @@
 #define INPUT_STRING_SIZE 80
 #define MAX_PATH_SIZE 300
 #define MAX_FILE_NAME 50
+#define MAX_CHILDS 50
+#define R TRUE
+#define T FALSE
+
+//#define DBG
+
+#ifdef DBG
+  #define PRINT(str) printf(str)
+#else
+  #define PRINT(str) while(0)
+#endif
 
 #include "io.h"
 #include "parse.h"
 #include "process.h"
 #include "shell.h"
 
-
-/* this structure holds info about redirection
+/* 
+* this structure holds info about redirection
 * keeps two flags for input/output redirection
 * also stores two file names for each redirection
 */
@@ -33,13 +44,32 @@ typedef struct redirection_info{
   int out_redir; // if output is redirected
 } redir_info_t;
 
+/*
+* hold information about child processes
+* this is currently used in wait built-in 
+* want to wait for running children only
+*/
+typedef struct child_info{
+  pid_t pid; // pid of the child process
+  pid_t pgid; // pgid of child process
+  int status; // R (running) - T (stopped) (see #defines above)
+  struct child_info *next; // next child in the list
+} child_t;
+
+/* a linked-list to manage children */
+child_t *children = NULL;
+
 /* some helper functions */
 
 void get_full_path(const char *file, char *full_path);
 void get_redirection_info(tok_t *toks, redir_info_t *rinfo);
 int check_background(tok_t *toks);
 void handle_signals(int sig, siginfo_t *sig_info, void *void_var);
+void child_handler(int sig, siginfo_t *sig_info, void *void_var);
 void child_sig(int sig, siginfo_t *sig_info, void *void_var);
+void put_child_in_list(child_t *child);
+void remove_child_from_list(pid_t pid);
+void change_child_status(pid_t pid, int new_status);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -52,6 +82,8 @@ int cmd_help(tok_t arg[]);
 int cmd_pwd(tok_t arg[]);
 
 int cmd_cd(tok_t arg[]);
+
+int cmd_wait(tok_t arg[]);
 
 
 
@@ -69,6 +101,7 @@ fun_desc_t cmd_table[] = {
   {cmd_quit, "quit", "quit the command shell"},
   {cmd_pwd, "pwd", "print working directory"},
   {cmd_cd, "cd", "change working directory"},
+  {cmd_wait, "wait", "wait for all background processes to finish"},
 };
 
 int cmd_help(tok_t arg[]) {
@@ -93,6 +126,24 @@ int cmd_cd(tok_t arg[]) {
     fprintf(stderr, "cd failed, %s is not a valid directory\n", arg[0]);
   }
   return result;
+}
+
+int cmd_wait(tok_t arg[]) {
+  int stat_loc;
+  int options = WUNTRACED;
+  pid_t running_children[MAX_CHILDS];
+  pid_t curr_child;
+  PRINT("Just before\n");
+  child_t *list = children;
+  /* wait for all running children to finish */
+  while(list != NULL) {
+    if(list->status == R)
+      waitpid(list->pid, NULL, options);
+    list = list->next;
+    PRINT("Wait for next child\n");
+  }
+  if(children == NULL)
+    PRINT("children is null!\n");
 }
 
 int lookup(char cmd[]) {
@@ -167,6 +218,13 @@ int shell (int argc, char *argv[]) {
   lineNum=0;
   // fprintf(stdout, "%d: ", lineNum);
   struct sigaction act;
+  sigemptyset(&act.sa_mask);
+  /* if SA_RESTART is not set, causes weird behaviour when calling freadln
+  returns EOF from input */
+  act.sa_flags = SA_SIGINFO | SA_RESTART; /* use sa_sigaction (with 3 args instead of 1) */
+  //act.sa_flags = 0;
+  act.sa_sigaction = child_handler;
+  sigaction(SIGCHLD, &act, NULL);
   int run_in_background = FALSE;
   /* the shell ignores this signals */
   signal(SIGTTOU, SIG_IGN);
@@ -174,6 +232,7 @@ int shell (int argc, char *argv[]) {
   signal(SIGTSTP, SIG_IGN);
   signal(SIGINT, SIG_IGN);
   signal(SIGQUIT, SIG_IGN);
+  signal(SIGCONT, SIG_IGN);
 //   const char *ch_log = "ch_log.txt";
 //   const char *pa_log = "pa_log.txt";
 //   sigemptyset(&act.sa_mask);
@@ -192,6 +251,8 @@ int shell (int argc, char *argv[]) {
   // printf("Terminal optins: %d %d\n",
   // shell_tmodes.c_lflag, shell_tmodes.c_lflag & TOSTOP);
   while ((s = freadln(stdin))){
+    PRINT("Input:\n");
+    PRINT(s);
     if(!strcmp(s, "\n")) {
     //  printf("Empty input\n");
       continue;
@@ -222,6 +283,7 @@ int shell (int argc, char *argv[]) {
         signal(SIGTSTP, SIG_DFL); // child should not ignore SIGTSTP
         signal(SIGINT, SIG_DFL); // child should not ignore SIGINT
         signal(SIGQUIT, SIG_DFL); // child should not ignore SIGQUIT
+        signal(SIGCONT, SIG_DFL);
         int fid_redir_in;
         if(redir_info.in_redir == TRUE) { // if input is redirected
           fid_redir_in = open(redir_info.input_file, O_RDONLY);
@@ -252,11 +314,18 @@ int shell (int argc, char *argv[]) {
           signal(SIGTTIN, SIG_DFL);
           signal(SIGTTOU, SIG_DFL);
         }
+        
         int result = execv(full_path, &t[0]); // returns only if error
        // fprintf(my_fd, "Failed to run program %s\n", t[0]);
-        exit(1); // execv only return on fail
+        exit(1); // execv only returns on fail
       }
       else { // parent waits for the child
+        child_t *this_child = (child_t*)malloc(sizeof(child_t));
+        this_child->pid = pid;
+        this_child->pgid = pid;
+        this_child->status = R; // running
+        this_child->next = NULL;
+        put_child_in_list(this_child);
         pid_t my_pid = getpid();
         pid_t pgid = getpgrp();
 
@@ -270,10 +339,16 @@ int shell (int argc, char *argv[]) {
         so take control of the terminal */
         int val_ret = tcsetpgrp(shell_terminal, shell_pgid);
         int cntrl = tcgetpgrp(shell_terminal);
+        PRINT("Parent leaves else...\n");
       }
     }
     // fprintf(stdout, "%d: ", lineNum);
   }
+  if(s == EOF)
+    PRINT("EOF in S\n");
+  PRINT("s out = \n");
+  PRINT(s);
+  PRINT("Exiting while\n");
   return 0;
 }
 
@@ -370,6 +445,59 @@ int check_background(tok_t *toks) {
   }
 }
 
+void put_child_in_list(child_t *child) {
+  PRINT("Putting child into list...\n");
+  if(children == NULL) { // list is empty
+    children = child;
+    return;
+  }
+  /* traverse the list and puth child at the end */
+  child_t *list = children;
+  while(list->next != NULL) {
+    list = list->next;
+  }
+  /* when reach here, list points to the last element */
+  list->next = child;
+}
+
+void remove_child_from_list(pid_t pid) {
+  PRINT("Removing child from list...\n");
+  if(children == NULL)
+    return;
+  else if(children != NULL && children->next == NULL) { // only one child
+    if(children->pid == pid) { // remove the only child
+      free(children);
+      children = NULL;
+    }
+    return;
+  }
+  /* if reach here, at least two childs available */
+  child_t *prev = children;
+  child_t *list = prev->next;
+  while(list != NULL) {
+    if(list->pid == pid) { // found the child
+      prev->next = list->next; // remove this node
+      free(list);
+      return;
+    }
+    prev = list;
+    list = list->next;
+  }
+}
+
+void change_child_status(pid_t pid, int new_status) {
+  PRINT("Changing child status in list...\n");
+  if(children == NULL)
+    return;
+  child_t *list = children;
+  while(list != NULL) {
+    if(list->pid == pid) {
+      list->status = new_status;
+    }
+    list = list->next;
+  }
+}
+
 void handle_signals(int sig, siginfo_t *sig_info, void *void_var) {
   if(sig == SIGTSTP) {
     printf("Received a SIGTSTP from terminal\n");
@@ -381,6 +509,24 @@ void handle_signals(int sig, siginfo_t *sig_info, void *void_var) {
     printf("CHILD SIGNAL\n");
     //printf("", sig_info->)
   }
+}
+
+void child_handler(int sig, siginfo_t *sig_info, void *void_var) {
+  PRINT("Parent in child handler...\n");
+  if(sig_info->si_code == CLD_EXITED) { // the child exited
+    pid_t child_pid = sig_info->si_pid;
+    remove_child_from_list(child_pid);
+  }
+  else if(sig_info->si_code == CLD_STOPPED) { // child received stop signal
+    pid_t child_pid = sig_info->si_pid;
+    change_child_status(child_pid, T);
+  }
+  else if(sig_info->si_code == CLD_CONTINUED) { // child continued
+    pid_t child_pid = sig_info->si_pid;
+    change_child_status(child_pid, R);
+  }
+//  fflush(stdin);
+  PRINT("Return from handler\n");
 }
 
 void child_sig(int sig, siginfo_t *sig_info, void *void_var) {
