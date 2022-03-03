@@ -64,9 +64,7 @@ child_t *children = NULL;
 void get_full_path(const char *file, char *full_path);
 void get_redirection_info(tok_t *toks, redir_info_t *rinfo);
 int check_background(tok_t *toks);
-void handle_signals(int sig, siginfo_t *sig_info, void *void_var);
 void child_handler(int sig, siginfo_t *sig_info, void *void_var);
-void child_sig(int sig, siginfo_t *sig_info, void *void_var);
 void put_child_in_list(child_t *child);
 void remove_child_from_list(pid_t pid);
 void change_child_status(pid_t pid, int new_status);
@@ -232,27 +230,12 @@ int shell (int argc, char *argv[]) {
   signal(SIGTSTP, SIG_IGN);
   signal(SIGINT, SIG_IGN);
   signal(SIGQUIT, SIG_IGN);
-  signal(SIGCONT, SIG_IGN);
-//   const char *ch_log = "ch_log.txt";
-//   const char *pa_log = "pa_log.txt";
-//   sigemptyset(&act.sa_mask);
-//   act.sa_flags = 0;
-//   act.sa_handler = SIG_IGN;
-//   int sig_rtn = sigaction(SIGTSTP, &act, NULL);
-//   //sig_rtn |= sigaction(SIGINT, &act, NULL);
-//   act.sa_handler = SIG_IGN;
-//   sig_rtn |= sigaction(SIGTTOU, &act, NULL);
-//   sig_rtn |= sigaction(SIGTTIN, &act, NULL);
-//  // act.sa_handler = handle_signals;
-//   sig_rtn |= sigaction(SIGCHLD, &act, NULL);
-  
-  // shell_tmodes.c_lflag |= TOSTOP;
-  // tcsetattr(shell_terminal, TCSANOW, &shell_tmodes);
-  // printf("Terminal optins: %d %d\n",
-  // shell_tmodes.c_lflag, shell_tmodes.c_lflag & TOSTOP);
   while ((s = freadln(stdin))){
     PRINT("Input:\n");
     PRINT(s);
+    /* after entering signals (like ^C) we receive empty input
+    processing it may lead to SIGSEGV
+    so skip empty inputs */
     if(!strcmp(s, "\n")) {
     //  printf("Empty input\n");
       continue;
@@ -280,10 +263,12 @@ int shell (int argc, char *argv[]) {
 
       pid_t pid = fork();
       if(pid == 0) { // child process executes program
+        /* child ingerits parent signals if ignored
+        restore signal handling to default for the child */
         signal(SIGTSTP, SIG_DFL); // child should not ignore SIGTSTP
         signal(SIGINT, SIG_DFL); // child should not ignore SIGINT
         signal(SIGQUIT, SIG_DFL); // child should not ignore SIGQUIT
-        signal(SIGCONT, SIG_DFL);
+        /* check input redirection */
         int fid_redir_in;
         if(redir_info.in_redir == TRUE) { // if input is redirected
           fid_redir_in = open(redir_info.input_file, O_RDONLY);
@@ -293,6 +278,7 @@ int shell (int argc, char *argv[]) {
             continue;
           }
         }
+        /* check output redirection */
         int fid_redir_out;
         if(redir_info.out_redir == TRUE) { // if output is redirected
             fid_redir_out = open(redir_info.output_file, O_RDWR | O_CREAT, 
@@ -303,7 +289,7 @@ int shell (int argc, char *argv[]) {
               continue;
             }
           }
-
+        /* set pgid of this process to its pid (leader of the group) */
         pid_t my_pid = getpid();
         setpgid(0, my_pid); // set this process as the head of a process group
         pid_t pgid = getpgrp();
@@ -320,18 +306,19 @@ int shell (int argc, char *argv[]) {
         exit(1); // execv only returns on fail
       }
       else { // parent waits for the child
+        /* add current child to the children list */
         child_t *this_child = (child_t*)malloc(sizeof(child_t));
         this_child->pid = pid;
         this_child->pgid = pid;
         this_child->status = R; // running
         this_child->next = NULL;
         put_child_in_list(this_child);
-        pid_t my_pid = getpid();
-        pid_t pgid = getpgrp();
 
         if(run_in_background == FALSE) {
           int stat_loc;
-          int options = WUNTRACED; // no flags
+          /* important: without WUNTRACED flag, we get blocked at 
+          stopped children until they finish! */
+          int options = WUNTRACED; /* also return if child has stopped */
           waitpid(pid, &stat_loc, options);
         }
         /* foreground process finished, or want to run
@@ -429,9 +416,15 @@ void get_redirection_info(tok_t *toks, redir_info_t *rinfo) {
   }
 }
 
+/*
+* check if a '&' is at the end of input
+* return TRUE if '&' is found
+* return FALSE otherwise
+*/
 int check_background(tok_t *toks) {
   int tok_index = 0;
   tok_t last_tok = NULL;
+  /* traverse tokens to get the last token */
   while(toks[tok_index] != NULL) {
     last_tok = toks[tok_index];
     tok_index++;
@@ -445,6 +438,7 @@ int check_background(tok_t *toks) {
   }
 }
 
+/* put child into the children list */
 void put_child_in_list(child_t *child) {
   PRINT("Putting child into list...\n");
   if(children == NULL) { // list is empty
@@ -460,6 +454,7 @@ void put_child_in_list(child_t *child) {
   list->next = child;
 }
 
+/* remove child whose process id is equal to pid from the list */
 void remove_child_from_list(pid_t pid) {
   PRINT("Removing child from list...\n");
   if(children == NULL)
@@ -485,6 +480,7 @@ void remove_child_from_list(pid_t pid) {
   }
 }
 
+/* change the status of child whose process id is pid to new_status */
 void change_child_status(pid_t pid, int new_status) {
   PRINT("Changing child status in list...\n");
   if(children == NULL)
@@ -498,19 +494,11 @@ void change_child_status(pid_t pid, int new_status) {
   }
 }
 
-void handle_signals(int sig, siginfo_t *sig_info, void *void_var) {
-  if(sig == SIGTSTP) {
-    printf("Received a SIGTSTP from terminal\n");
-  }
-  else if(sig == SIGINT) {
-    printf("Received a SIGINT from terminal\n");
-  }
-  else if(sig == SIGCHLD) {
-    printf("CHILD SIGNAL\n");
-    //printf("", sig_info->)
-  }
-}
-
+/* 
+* handle SIGCHLD signal
+* if child exited, remove it from the list
+* if child stopped or continued, change its status
+*/
 void child_handler(int sig, siginfo_t *sig_info, void *void_var) {
   PRINT("Parent in child handler...\n");
   if(sig_info->si_code == CLD_EXITED) { // the child exited
@@ -527,17 +515,4 @@ void child_handler(int sig, siginfo_t *sig_info, void *void_var) {
   }
 //  fflush(stdin);
   PRINT("Return from handler\n");
-}
-
-void child_sig(int sig, siginfo_t *sig_info, void *void_var) {
-  FILE *fd = fopen("child_log.txt", "w");
-  if(sig == SIGTTOU) {
-    fprintf(fd, "Got TTOU in child\n");
-  }
-  else if(sig == SIGTTIN) {
-    fprintf(fd, "Got TTIN in child\n");
-  }
-  else {
-    fprintf(fd, "Got another in child\n");
-  }
 }
