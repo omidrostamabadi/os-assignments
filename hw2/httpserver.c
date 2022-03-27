@@ -18,6 +18,12 @@
 #include "libhttp.h"
 #include "wq.h"
 
+/* 
+* Constants used in this file
+*/
+#define MAX_CONTENT_LENGTH_DIGITS 20
+#define MAX_CON_LEN MAX_CONTENT_LENGTH_DIGITS
+
 /*
  * Global configuration variables.
  * You need to use these in your implementation of handle_files_request and
@@ -41,22 +47,60 @@ int server_proxy_port;
  */
 void serve_file(int fd, char *path) {
 
+  /* Initialize the response */
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", http_get_mime_type(path));
-  http_send_header(fd, "Content-Length", "0"); // Change this too
+
+  /* Open the file and calcualte its length in bytes */
+  FILE *file = fopen(path, "rb");
+  fseek(file, 0, SEEK_END);
+  long file_size = ftell(file);
+  char *file_size_str = (char *) malloc(MAX_CON_LEN);
+
+  /* Reset file pos to the begining of the file */
+  fseek(file, 0, SEEK_SET);
+
+  /* Convert the file length to string and write the header */
+  sprintf(file_size_str, "%ld", file_size);
+  http_send_header(fd, "Content-Length", file_size_str); // Change this too
   http_end_headers(fd);
+  free(file_size_str); // No longer needed
 
-  /* TODO: PART 1 Bullet 2 */
+  /* Create a buffer to read the file contents */
+  char *buffer = malloc(file_size);
+  fread(buffer, sizeof(char), file_size, file);
 
+  /* Write file contents to socket fd */
+  http_send_data(fd, buffer, file_size);
+  
+  /* Close the file, free the buffer, and return */
+  fclose(file);
+  free(buffer);
 }
 
 void serve_directory(int fd, char *path) {
+  /*
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", http_get_mime_type(".html"));
-  http_end_headers(fd);
+  http_end_headers(fd); */
 
   /* TODO: PART 1 Bullet 3,4 */
 
+  /* First check if index.html exists in the directory */
+  char index_file[] = "/index.html";
+  char *tmp_index_path = malloc(strlen(path) + strlen(index_file) + 2);
+  strcpy(tmp_index_path, path);
+  strcat(tmp_index_path, index_file);
+  if(access(tmp_index_path, F_OK) == 0) {
+    serve_file(fd, tmp_index_path);
+  }
+  else {
+    /* List directory contents */
+
+  }
+
+  /* Free allocated memory */
+  free(tmp_index_path);
 }
 
 
@@ -93,11 +137,13 @@ void handle_files_request(int fd) {
     return;
   }
 
-  /* Remove beginning `./` */
+  /*
+  /* Remove beginning `./` 
   char *path = malloc(2 + strlen(request->path) + 1);
   path[0] = '.';
   path[1] = '/';
   memcpy(path + 2, request->path, strlen(request->path) + 1);
+  */
 
   /* 
    * TODO: First is to serve files. If the file given by `path` exists,
@@ -109,7 +155,38 @@ void handle_files_request(int fd) {
    *  
    * Feel FREE to delete/modify anything on this function.
    */
+  /* The request->path variable is relative to server_files_directory */
+  char *path = malloc(strlen(server_files_directory) + strlen(request->path) + 2);
+  strcpy(path, server_files_directory);
+  strcat(path, request->path);
 
+  /* Get information about the specified path */
+  struct stat stat_buf;
+  if(stat(path, &stat_buf)) { // If an error occures
+    char *err = strerror(errno);
+    // Handle the error here
+    printf("Req for %s : %s\n", request->path, path);
+    printf("Stat returned error %d : %s\n", errno, err);
+    http_start_response(fd, 404);
+    http_send_header(fd, "Content-Type", "text/html");
+    http_end_headers(fd);
+    close(fd);
+    return;
+  }
+  else { // If the specified path exists
+    /* If a file is specified */
+    if(S_ISREG(stat_buf.st_mode)) {
+      // printf("Into file serve\n");
+      serve_file(fd, path);
+    }
+    /* If a directory is specified */
+    else if(S_ISDIR(stat_buf.st_mode)) {
+      // printf("Into directory serve\n");
+      serve_directory(fd, path);
+    }
+  }
+
+  /*
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", "text/html");
   http_end_headers(fd);
@@ -118,7 +195,7 @@ void handle_files_request(int fd) {
       "<h1>Welcome to httpserver!</h1>"
       "<hr>"
       "<p>Nothing's here yet.</p>"
-      "</center>");
+      "</center>"); */
 
   close(fd);
   return;
@@ -159,7 +236,7 @@ void handle_proxy_request(int fd) {
 
   if (target_dns_entry == NULL) {
     fprintf(stderr, "Cannot find host: %s\n", server_proxy_hostname);
-    close(target_fd);
+  //  close(target_fd);
     close(fd);
     exit(ENXIO);
   }
@@ -178,7 +255,7 @@ void handle_proxy_request(int fd) {
     http_send_header(fd, "Content-Type", "text/html");
     http_end_headers(fd);
     http_send_string(fd, "<center><h1>502 Bad Gateway</h1><hr></center>");
-    close(target_fd);
+  //  close(target_fd);
     close(fd);
     return;
 
