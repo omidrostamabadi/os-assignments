@@ -23,6 +23,8 @@
 */
 #define MAX_CONTENT_LENGTH_DIGITS 20
 #define MAX_CON_LEN MAX_CONTENT_LENGTH_DIGITS
+#define MAX_DIRENT_NAME_LEN 200
+#define MAX_ENT_NUM 100
 
 /*
  * Global configuration variables.
@@ -36,6 +38,47 @@ int server_port;
 char *server_files_directory;
 char *server_proxy_hostname;
 int server_proxy_port;
+
+/* Helper functions are defined here */
+
+/*
+* Create a html page to represent the children of path directory
+* The caller must ensure path exits and is a directory
+* The caller is responsible for freeing the returned char * pointer
+* Does not list . and ..
+*/
+char *list_dirs(const char *path) {
+  DIR *dp;
+  struct dirent *dirp;
+  dp = opendir(path);
+  if(dp == NULL) { // Error opening directory
+    switch(errno) {
+      case EACCES: printf("Permission denied\n");
+      case ENOENT: printf("Specified directory %s does not exist\n", path);
+      case ENOTDIR: printf("%s is not a directory\n", path);
+    }
+    exit(EXIT_FAILURE);
+  }
+  char *tmp_ent_name = malloc(MAX_DIRENT_NAME_LEN);
+  char *dir_list_html = malloc(MAX_DIRENT_NAME_LEN * MAX_ENT_NUM);
+
+  /* First, put a reference to parent directory */
+  sprintf(tmp_ent_name, "<a href=\"../\">Parent directory</a><br>\n");
+  strcpy(dir_list_html, tmp_ent_name);
+
+  /* Iterate over all enteries and put a reference to each */
+  while((dirp = readdir(dp)) != NULL) {
+    if(strcmp(".", dirp->d_name) && strcmp("..", dirp->d_name)) { // Skip . and ..
+      sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
+      strcat(dir_list_html, tmp_ent_name);
+    }
+  }
+
+  /* Free allocated memory */
+  free(tmp_ent_name);
+
+  return dir_list_html;
+}
 
 /*
  * Serves the contents the file stored at `path` to the client socket `fd`.
@@ -91,12 +134,27 @@ void serve_directory(int fd, char *path) {
   char *tmp_index_path = malloc(strlen(path) + strlen(index_file) + 2);
   strcpy(tmp_index_path, path);
   strcat(tmp_index_path, index_file);
-  if(access(tmp_index_path, F_OK) == 0) {
+  if(access(tmp_index_path, F_OK) == 0) { // The directory contains index.html
     serve_file(fd, tmp_index_path);
   }
-  else {
-    /* List directory contents */
+  else { // The directory has no index.html, so list enteries
+    /* Start HTTP headers */
+    http_start_response(fd, 200);
+    http_send_header(fd, "Content-Type", http_get_mime_type(".html"));
 
+    /* Get directory list and complete headers */
+    char *dir_list_html = list_dirs(path);
+    char *file_size_str = (char *) malloc(MAX_CON_LEN);
+    sprintf(file_size_str, "%ld", strlen(dir_list_html));
+    http_send_header(fd, "Content-Length", file_size_str);
+    http_end_headers(fd);
+
+    /* Send HTTP data */
+    http_send_string(fd, dir_list_html);
+
+    /* Free allocated memory */
+    free(dir_list_html); // Was allocated in list_dirs function
+    free(file_size_str);
   }
 
   /* Free allocated memory */
