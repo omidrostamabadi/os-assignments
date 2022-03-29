@@ -69,8 +69,17 @@ char *list_dirs(const char *path) {
   /* Iterate over all enteries and put a reference to each */
   while((dirp = readdir(dp)) != NULL) {
     if(strcmp(".", dirp->d_name) && strcmp("..", dirp->d_name)) { // Skip . and ..
-      sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
-      strcat(dir_list_html, tmp_ent_name);
+      printf("name=%s type=%d\n", dirp->d_name, dirp->d_type);
+      if(dirp->d_type == 4) { // A directory, should add '/' to the end of the link
+        sprintf(tmp_ent_name, "<a href=\"./%s/\">%s</a><br>\n", dirp->d_name, dirp->d_name);
+        strcat(dir_list_html, tmp_ent_name);
+      }
+      else { // Not a directory, form links without an end '/'
+        sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
+        strcat(dir_list_html, tmp_ent_name);
+      }
+      // sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
+      // strcat(dir_list_html, tmp_ent_name);
     }
   }
 
