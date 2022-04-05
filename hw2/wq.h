@@ -3,6 +3,10 @@
 
 #include <pthread.h>
 
+/* Synchronization primitives used in wq */
+pthread_mutex_t wq_mutex; // Lock of work queue
+pthread_cond_t wq_empty; // Used to wait when work queue is empty
+
 /* WQ defines a work queue which will be used to store accepted client sockets
  * waiting to be served. */
 

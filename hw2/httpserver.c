@@ -38,6 +38,7 @@ int server_port;
 char *server_files_directory;
 char *server_proxy_hostname;
 int server_proxy_port;
+pthread_t *threads;
 
 /* Helper functions are defined here */
 
@@ -186,85 +187,91 @@ void serve_directory(int fd, char *path) {
  */
 void handle_files_request(int fd) {
 
-  struct http_request *request = http_request_parse(fd);
+  while(1) {
+    /* Get the new fd from work queue */
+    fd = wq_pop(&work_queue);
 
-  if (request == NULL || request->path[0] != '/') {
-    http_start_response(fd, 400);
-    http_send_header(fd, "Content-Type", "text/html");
-    http_end_headers(fd);
-    close(fd);
-    return;
-  }
+    /* Serve and close the fd */
+    struct http_request *request = http_request_parse(fd);
 
-  if (strstr(request->path, "..") != NULL) {
-    http_start_response(fd, 403);
-    http_send_header(fd, "Content-Type", "text/html");
-    http_end_headers(fd);
-    close(fd);
-    return;
-  }
-
-  /*
-  /* Remove beginning `./` 
-  char *path = malloc(2 + strlen(request->path) + 1);
-  path[0] = '.';
-  path[1] = '/';
-  memcpy(path + 2, request->path, strlen(request->path) + 1);
-  */
-
-  /* 
-   * TODO: First is to serve files. If the file given by `path` exists,
-   * call serve_file() on it. Else, serve a 404 Not Found error below.
-   *
-   * TODO: Second is to serve both files and directories. You will need to
-   * determine when to call serve_file() or serve_directory() depending
-   * on `path`.
-   *  
-   * Feel FREE to delete/modify anything on this function.
-   */
-  /* The request->path variable is relative to server_files_directory */
-  char *path = malloc(strlen(server_files_directory) + strlen(request->path) + 2);
-  strcpy(path, server_files_directory);
-  strcat(path, request->path);
-
-  /* Get information about the specified path */
-  struct stat stat_buf;
-  if(stat(path, &stat_buf)) { // If an error occures
-    char *err = strerror(errno);
-    // Handle the error here
-    printf("Req for %s : %s\n", request->path, path);
-    printf("Stat returned error %d : %s\n", errno, err);
-    http_start_response(fd, 404);
-    http_send_header(fd, "Content-Type", "text/html");
-    http_end_headers(fd);
-    close(fd);
-    return;
-  }
-  else { // If the specified path exists
-    /* If a file is specified */
-    if(S_ISREG(stat_buf.st_mode)) {
-      // printf("Into file serve\n");
-      serve_file(fd, path);
+    if (request == NULL || request->path[0] != '/') {
+      http_start_response(fd, 400);
+      http_send_header(fd, "Content-Type", "text/html");
+      http_end_headers(fd);
+      close(fd);
+      return;
     }
-    /* If a directory is specified */
-    else if(S_ISDIR(stat_buf.st_mode)) {
-      // printf("Into directory serve\n");
-      serve_directory(fd, path);
+
+    if (strstr(request->path, "..") != NULL) {
+      http_start_response(fd, 403);
+      http_send_header(fd, "Content-Type", "text/html");
+      http_end_headers(fd);
+      close(fd);
+      return;
     }
+
+    /*
+    /* Remove beginning `./` 
+    char *path = malloc(2 + strlen(request->path) + 1);
+    path[0] = '.';
+    path[1] = '/';
+    memcpy(path + 2, request->path, strlen(request->path) + 1);
+    */
+
+    /* 
+    * TODO: First is to serve files. If the file given by `path` exists,
+    * call serve_file() on it. Else, serve a 404 Not Found error below.
+    *
+    * TODO: Second is to serve both files and directories. You will need to
+    * determine when to call serve_file() or serve_directory() depending
+    * on `path`.
+    *  
+    * Feel FREE to delete/modify anything on this function.
+    */
+    /* The request->path variable is relative to server_files_directory */
+    char *path = malloc(strlen(server_files_directory) + strlen(request->path) + 2);
+    strcpy(path, server_files_directory);
+    strcat(path, request->path);
+
+    /* Get information about the specified path */
+    struct stat stat_buf;
+    if(stat(path, &stat_buf)) { // If an error occures
+      char *err = strerror(errno);
+      // Handle the error here
+      printf("Req for %s : %s\n", request->path, path);
+      printf("Stat returned error %d : %s\n", errno, err);
+      http_start_response(fd, 404);
+      http_send_header(fd, "Content-Type", "text/html");
+      http_end_headers(fd);
+      close(fd);
+      return;
+    }
+    else { // If the specified path exists
+      /* If a file is specified */
+      if(S_ISREG(stat_buf.st_mode)) {
+        // printf("Into file serve\n");
+        serve_file(fd, path);
+      }
+      /* If a directory is specified */
+      else if(S_ISDIR(stat_buf.st_mode)) {
+        // printf("Into directory serve\n");
+        serve_directory(fd, path);
+      }
+    }
+
+    /*
+    http_start_response(fd, 200);
+    http_send_header(fd, "Content-Type", "text/html");
+    http_end_headers(fd);
+    http_send_string(fd,
+        "<center>"
+        "<h1>Welcome to httpserver!</h1>"
+        "<hr>"
+        "<p>Nothing's here yet.</p>"
+        "</center>"); */
+
+    close(fd);
   }
-
-  /*
-  http_start_response(fd, 200);
-  http_send_header(fd, "Content-Type", "text/html");
-  http_end_headers(fd);
-  http_send_string(fd,
-      "<center>"
-      "<h1>Welcome to httpserver!</h1>"
-      "<hr>"
-      "<p>Nothing's here yet.</p>"
-      "</center>"); */
-
-  close(fd);
   return;
 }
 
@@ -338,6 +345,15 @@ void init_thread_pool(int num_threads, void (*request_handler)(int)) {
   /*
    * TODO: Part of your solution for Task 2 goes here!
    */
+
+  /* Allocate the array of thread handles of the server thread pool */
+  threads = malloc(num_threads * sizeof(pthread_t));
+
+  /* Initially create threads with fake client socket number 0
+    * In request handler function, they constantly pop socket numbers from wq */
+  for(int i = 0; i < num_threads; i++) {
+    pthread_create(&threads[i], NULL, request_handler, 0);
+  }
 }
 
 /*
@@ -382,6 +398,10 @@ void serve_forever(int *socket_number, void (*request_handler)(int)) {
 
   printf("Listening on port %d...\n", server_port);
 
+  /* Must come before init_thread_pool to make sure cond & mutex vars are
+  * initialized correctly */
+  wq_init(&work_queue);
+
   init_thread_pool(num_threads, request_handler);
 
   while (1) {
@@ -396,10 +416,12 @@ void serve_forever(int *socket_number, void (*request_handler)(int)) {
     printf("Accepted connection from %s on port %d\n",
         inet_ntoa(client_address.sin_addr),
         client_address.sin_port);
-
+/*
     // TODO: Change me?
     request_handler(client_socket_number);
-    close(client_socket_number);
+    close(client_socket_number); */
+
+    wq_push(&work_queue, client_socket_number);
 
     printf("Accepted connection from %s on port %d\n",
         inet_ntoa(client_address.sin_addr),
