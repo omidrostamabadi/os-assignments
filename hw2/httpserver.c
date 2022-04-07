@@ -25,6 +25,17 @@
 #define MAX_CON_LEN MAX_CONTENT_LENGTH_DIGITS
 #define MAX_DIRENT_NAME_LEN 200
 #define MAX_ENT_NUM 100
+#define PROXY_BUFFER_SIZE 10000
+
+/*
+* Structs are defined here
+*/
+
+/* This struct is passed as an argument to up/downstream threads of handle_proxy_request */
+struct proxy_socket {
+  int fd;
+  int cl_sock_fd;
+};
 
 /*
  * Global configuration variables.
@@ -70,7 +81,7 @@ char *list_dirs(const char *path) {
   /* Iterate over all enteries and put a reference to each */
   while((dirp = readdir(dp)) != NULL) {
     if(strcmp(".", dirp->d_name) && strcmp("..", dirp->d_name)) { // Skip . and ..
-      printf("name=%s type=%d\n", dirp->d_name, dirp->d_type);
+      // printf("name=%s type=%d\n", dirp->d_name, dirp->d_type);
       if(dirp->d_type == 4) { // A directory, should add '/' to the end of the link
         sprintf(tmp_ent_name, "<a href=\"./%s/\">%s</a><br>\n", dirp->d_name, dirp->d_name);
         strcat(dir_list_html, tmp_ent_name);
@@ -88,6 +99,38 @@ char *list_dirs(const char *path) {
   free(tmp_ent_name);
 
   return dir_list_html;
+}
+
+/*
+* Wait for data on local socket in proxy requests
+* Writes information quickly to target http server
+* Thread should terminate if the other thread has exited
+*/
+void *proxy_thread_handle_upstream(void *socks) {
+  char *buffer = malloc(PROXY_BUFFER_SIZE);
+  size_t data_len;
+  struct proxy_socket *my_sock = (struct proxy_socket*) socks;
+  while(1) {
+    data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
+    send(my_sock->cl_sock_fd, buffer, data_len, 0);
+    // printf("Transfered %lu bytes upstream\n", data_len);
+  }
+}
+
+/*
+* Wait for data on local socket in proxy requests
+* Writes information quickly to target http server
+* Thread should terminate if the other thread has exited
+*/
+void *proxy_thread_handle_downstream(void *socks) {
+  char *buffer = malloc(PROXY_BUFFER_SIZE);
+  size_t data_len;
+  struct proxy_socket *my_sock = (struct proxy_socket*) socks;
+  while(1) {
+    data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
+    send(my_sock->fd, buffer, data_len, 0);
+    // printf("Transfered %lu bytes downstream\n", data_len);
+  }
 }
 
 /*
@@ -238,8 +281,8 @@ void handle_files_request(int fd) {
     if(stat(path, &stat_buf)) { // If an error occures
       char *err = strerror(errno);
       // Handle the error here
-      printf("Req for %s : %s\n", request->path, path);
-      printf("Stat returned error %d : %s\n", errno, err);
+      // printf("Req for %s : %s\n", request->path, path);
+      // printf("Stat returned error %d : %s\n", errno, err);
       http_start_response(fd, 404);
       http_send_header(fd, "Content-Type", "text/html");
       http_end_headers(fd);
@@ -293,47 +336,62 @@ void handle_proxy_request(int fd) {
   * The code below does a DNS lookup of server_proxy_hostname and 
   * opens a connection to it. Please do not modify.
   */
+  while(1) {
+    /* Get a new fd from work queue */
+    fd = wq_pop(&work_queue);
 
-  struct sockaddr_in target_address;
-  memset(&target_address, 0, sizeof(target_address));
-  target_address.sin_family = AF_INET;
-  target_address.sin_port = htons(server_proxy_port);
+    /* Serve and close fd */
+    struct sockaddr_in target_address;
+    memset(&target_address, 0, sizeof(target_address));
+    target_address.sin_family = AF_INET;
+    target_address.sin_port = htons(server_proxy_port);
 
-  struct hostent *target_dns_entry = gethostbyname2(server_proxy_hostname, AF_INET);
+    struct hostent *target_dns_entry = gethostbyname2(server_proxy_hostname, AF_INET);
 
-  int client_socket_fd = socket(PF_INET, SOCK_STREAM, 0);
-  if (client_socket_fd == -1) {
-    fprintf(stderr, "Failed to create a new socket: error %d: %s\n", errno, strerror(errno));
-    close(fd);
-    exit(errno);
+    int client_socket_fd = socket(PF_INET, SOCK_STREAM, 0);
+    if (client_socket_fd == -1) {
+      fprintf(stderr, "Failed to create a new socket: error %d: %s\n", errno, strerror(errno));
+      close(fd);
+      exit(errno);
+    }
+
+    if (target_dns_entry == NULL) {
+      fprintf(stderr, "Cannot find host: %s\n", server_proxy_hostname);
+    //  close(target_fd);
+      close(fd);
+      exit(ENXIO);
+    }
+
+    char *dns_address = target_dns_entry->h_addr_list[0];
+
+    memcpy(&target_address.sin_addr, dns_address, sizeof(target_address.sin_addr));
+    int connection_status = connect(client_socket_fd, (struct sockaddr*) &target_address,
+        sizeof(target_address));
+
+    if (connection_status < 0) {
+      /* Dummy request parsing, just to be compliant. */
+      http_request_parse(fd);
+
+      http_start_response(fd, 502);
+      http_send_header(fd, "Content-Type", "text/html");
+      http_end_headers(fd);
+      http_send_string(fd, "<center><h1>502 Bad Gateway</h1><hr></center>");
+    //  close(target_fd);
+      close(fd);
+      return;
+
+    }
+    /* Create two thread handles, upstream will send data from fd to client_socket_fd
+    * and downstream will do the reverse */
+    struct proxy_socket up_sockets, down_sockets;
+    up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
+    down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd; 
+
+    pthread_t upstream_thread, downstream_thread;
+    pthread_create(&upstream_thread, NULL, proxy_thread_handle_upstream, &up_sockets);
+    pthread_create(&downstream_thread, NULL, proxy_thread_handle_downstream, &up_sockets);
   }
-
-  if (target_dns_entry == NULL) {
-    fprintf(stderr, "Cannot find host: %s\n", server_proxy_hostname);
-  //  close(target_fd);
-    close(fd);
-    exit(ENXIO);
-  }
-
-  char *dns_address = target_dns_entry->h_addr_list[0];
-
-  memcpy(&target_address.sin_addr, dns_address, sizeof(target_address.sin_addr));
-  int connection_status = connect(client_socket_fd, (struct sockaddr*) &target_address,
-      sizeof(target_address));
-
-  if (connection_status < 0) {
-    /* Dummy request parsing, just to be compliant. */
-    http_request_parse(fd);
-
-    http_start_response(fd, 502);
-    http_send_header(fd, "Content-Type", "text/html");
-    http_end_headers(fd);
-    http_send_string(fd, "<center><h1>502 Bad Gateway</h1><hr></center>");
-  //  close(target_fd);
-    close(fd);
-    return;
-
-  }
+  
 
   /* 
   * TODO: Your solution for task 3 belongs here! 
@@ -456,6 +514,7 @@ int main(int argc, char **argv) {
   /* Default settings */
   server_port = 8000;
   void (*request_handler)(int) = NULL;
+  num_threads = 1; // At least one thread to handle requests
 
   int i;
   for (i = 1; i < argc; i++) {

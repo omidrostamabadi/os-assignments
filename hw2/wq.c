@@ -19,15 +19,15 @@ void wq_init(wq_t *wq) {
 int wq_pop(wq_t *wq) {
 
   /* TODO: Make me blocking and thread-safe! */
-  printf("Trying to pop...\n");
+  // printf("Trying to pop...\n");
   /* Acquire the lock to proceed safely */
   pthread_mutex_lock(&wq_mutex);
 
   /* Wait untill there's at least one element in the work queue */
   while(wq->size == 0) {
-    printf("Going to wait...\n");
+    // printf("Going to wait...\n");
     pthread_cond_wait(&wq_empty, &wq_mutex);
-    printf("Waking up from wait...\n");
+    // printf("Waking up from wait...\n");
   }
 
   /* Get the item in the work queue */
@@ -39,7 +39,7 @@ int wq_pop(wq_t *wq) {
   /* Release lock and resources and return */
   pthread_mutex_unlock(&wq_mutex);
   free(wq_item);
-  printf("Poped item, returning...\n");
+  // printf("Poped item, returning...\n");
   return client_socket_fd;
 }
 
@@ -47,7 +47,7 @@ int wq_pop(wq_t *wq) {
 void wq_push(wq_t *wq, int client_socket_fd) {
 
   /* TODO: Make me thread-safe! */
-  printf("Trying to push...\n");
+  // printf("Trying to push...\n");
   /* Acquire the lock to proceed safely */
   pthread_mutex_lock(&wq_mutex);
 
@@ -63,5 +63,5 @@ void wq_push(wq_t *wq, int client_socket_fd) {
 
   /* Release the lock */
   pthread_mutex_unlock(&wq_mutex);
-  printf("Pushed, returning...\n");
+  // printf("Pushed, returning...\n");
 }
