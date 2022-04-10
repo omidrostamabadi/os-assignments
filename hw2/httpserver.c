@@ -112,7 +112,10 @@ void *proxy_thread_handle_upstream(void *socks) {
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
     data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
-    send(my_sock->cl_sock_fd, buffer, data_len, 0);
+    if(data_len < 0)
+      printf("A problem in upstream read.\n");
+    //send(my_sock->cl_sock_fd, buffer, data_len, 0);
+    http_send_data(my_sock->cl_sock_fd, buffer, data_len);
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
 }
@@ -128,7 +131,10 @@ void *proxy_thread_handle_downstream(void *socks) {
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
     data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
-    send(my_sock->fd, buffer, data_len, 0);
+    if(data_len < 0)
+      printf("A problem in downstream read.\n");
+    //send(my_sock->fd, buffer, data_len, 0);
+    http_send_data(my_sock->fd, buffer, data_len);
     // printf("Transfered %lu bytes downstream\n", data_len);
   }
 }
