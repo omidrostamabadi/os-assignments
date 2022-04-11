@@ -111,15 +111,16 @@ void http_send_string(int fd, char *data) {
   http_send_data(fd, data, strlen(data));
 }
 
-void http_send_data(int fd, char *data, size_t size) {
+int http_send_data(int fd, char *data, size_t size) {
   ssize_t bytes_sent;
   while (size > 0) {
     bytes_sent = write(fd, data, size);
     if (bytes_sent < 0)
-      return;
+      return -1; // Indicates a failure
     size -= bytes_sent;
     data += bytes_sent;
   }
+  return 0; // Indicate success
 }
 
 char *http_get_mime_type(char *file_name) {

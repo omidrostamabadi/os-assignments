@@ -37,7 +37,7 @@ void http_start_response(int fd, int status_code);
 void http_send_header(int fd, char *key, char *value);
 void http_end_headers(int fd);
 void http_send_string(int fd, char *data);
-void http_send_data(int fd, char *data, size_t size);
+int http_send_data(int fd, char *data, size_t size);
 
 /*
  * Helper function: gets the Content-Type based on a file name.

@@ -35,6 +35,8 @@
 struct proxy_socket {
   int fd;
   int cl_sock_fd;
+  pthread_cond_t *close_socks;
+  int *finished;
 };
 
 /*
@@ -109,15 +111,24 @@ char *list_dirs(const char *path) {
 void *proxy_thread_handle_upstream(void *socks) {
   char *buffer = malloc(PROXY_BUFFER_SIZE);
   size_t data_len;
+  int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
     data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
-    if(data_len < 0)
-      printf("A problem in upstream read.\n");
+    if(data_len <= 0) {
+      // printf("A problem in upstream read.\n");
+      break;
+    }
     //send(my_sock->cl_sock_fd, buffer, data_len, 0);
-    http_send_data(my_sock->cl_sock_fd, buffer, data_len);
+    write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
+    if(write_status < 0) {
+      // printf("A problem in upstream write.\n");
+      break;
+    }
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
+  *(my_sock->finished) = 1;
+  pthread_cond_signal(my_sock->close_socks);
 }
 
 /*
@@ -128,15 +139,24 @@ void *proxy_thread_handle_upstream(void *socks) {
 void *proxy_thread_handle_downstream(void *socks) {
   char *buffer = malloc(PROXY_BUFFER_SIZE);
   size_t data_len;
+  int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
     data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
-    if(data_len < 0)
-      printf("A problem in downstream read.\n");
+    if(data_len <= 0) {
+      // printf("A problem in downstream read.\n");
+      break;
+    }
     //send(my_sock->fd, buffer, data_len, 0);
-    http_send_data(my_sock->fd, buffer, data_len);
+    write_status = http_send_data(my_sock->fd, buffer, data_len);
+    if(write_status < 0) {
+      // printf("A problem in downstream write.\n");
+      break;
+    }
     // printf("Transfered %lu bytes downstream\n", data_len);
   }
+  *(my_sock->finished) = 1;
+  pthread_cond_signal(my_sock->close_socks);
 }
 
 /*
@@ -389,13 +409,26 @@ void handle_proxy_request(int fd) {
     }
     /* Create two thread handles, upstream will send data from fd to client_socket_fd
     * and downstream will do the reverse */
+    pthread_cond_t proxy_cond;
+    pthread_mutex_t proxy_mutex;
+    int finished = 0;
+    pthread_cond_init(&proxy_cond, NULL);
+    pthread_mutex_init(&proxy_mutex, NULL);
     struct proxy_socket up_sockets, down_sockets;
     up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
-    down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd; 
+    down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd;
+    up_sockets.close_socks = down_sockets.close_socks = &proxy_mutex; 
+    up_sockets.finished = down_sockets.finished = &finished;
 
     pthread_t upstream_thread, downstream_thread;
     pthread_create(&upstream_thread, NULL, proxy_thread_handle_upstream, &up_sockets);
     pthread_create(&downstream_thread, NULL, proxy_thread_handle_downstream, &up_sockets);
+
+    if(finished == 0) 
+      pthread_cond_wait(&proxy_cond, &proxy_mutex);
+    close(fd);
+    close(client_socket_fd);
+    printf("Closed both sockets\n");
   }
   
 
@@ -477,9 +510,9 @@ void serve_forever(int *socket_number, void (*request_handler)(int)) {
       continue;
     }
 
-    printf("Accepted connection from %s on port %d\n",
-        inet_ntoa(client_address.sin_addr),
-        client_address.sin_port);
+    // printf("Accepted connection from %s on port %d\n",
+    //     inet_ntoa(client_address.sin_addr),
+    //     client_address.sin_port);
 /*
     // TODO: Change me?
     request_handler(client_socket_number);
