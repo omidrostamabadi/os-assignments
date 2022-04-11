@@ -428,7 +428,7 @@ void handle_proxy_request(int fd) {
       pthread_cond_wait(&proxy_cond, &proxy_mutex);
     close(fd);
     close(client_socket_fd);
-    printf("Closed both sockets\n");
+  //  printf("Closed both sockets\n");
   }
   
 
