@@ -114,7 +114,9 @@ void *proxy_thread_handle_upstream(void *socks) {
   int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
-    data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
+    // data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
+    data_len = read(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1);
+    printf("Read-UP - %lu\n", data_len);
     if(data_len <= 0) {
       // printf("A problem in upstream read.\n");
       break;
@@ -129,6 +131,7 @@ void *proxy_thread_handle_upstream(void *socks) {
   }
   *(my_sock->finished) = 1;
   pthread_cond_signal(my_sock->close_socks);
+  printf("Leave upstream fd=%d clfd=%d\n", my_sock->fd, my_sock->cl_sock_fd);
 }
 
 /*
@@ -142,7 +145,9 @@ void *proxy_thread_handle_downstream(void *socks) {
   int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
   while(1) {
-    data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
+    //data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
+    data_len = read(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1);
+    printf("Read-DOWN - %lu\n", data_len);
     if(data_len <= 0) {
       // printf("A problem in downstream read.\n");
       break;
@@ -157,6 +162,7 @@ void *proxy_thread_handle_downstream(void *socks) {
   }
   *(my_sock->finished) = 1;
   pthread_cond_signal(my_sock->close_socks);
+  printf("Leave downstream fd=%d clfd=%d\n", my_sock->fd, my_sock->cl_sock_fd);
 }
 
 /*
@@ -426,9 +432,14 @@ void handle_proxy_request(int fd) {
 
     if(finished == 0) 
       pthread_cond_wait(&proxy_cond, &proxy_mutex);
+
+    // pthread_join(upstream_thread, NULL);
+    // pthread_join(downstream_thread, NULL);
     close(fd);
     close(client_socket_fd);
-  //  printf("Closed both sockets\n");
+    pthread_mutex_destroy(&proxy_mutex);
+    pthread_cond_destroy(&proxy_cond);
+    printf("Closed both sockets\n");
   }
   
 
