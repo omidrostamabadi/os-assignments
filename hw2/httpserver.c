@@ -417,7 +417,7 @@ void handle_proxy_request(int fd) {
     struct proxy_socket up_sockets, down_sockets;
     up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
     down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd;
-    up_sockets.close_socks = down_sockets.close_socks = &proxy_mutex; 
+    up_sockets.close_socks = down_sockets.close_socks = &proxy_cond; 
     up_sockets.finished = down_sockets.finished = &finished;
 
     pthread_t upstream_thread, downstream_thread;
