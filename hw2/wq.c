@@ -39,7 +39,7 @@ int wq_pop(wq_t *wq) {
   /* Release lock and resources and return */
   pthread_mutex_unlock(&wq_mutex);
   free(wq_item);
-  // printf("Poped item, returning...\n");
+  printf("Poped item %d, returning...\n", client_socket_fd);
   return client_socket_fd;
 }
 
@@ -58,10 +58,10 @@ void wq_push(wq_t *wq, int client_socket_fd) {
   wq->size++;
 
   /* If size is 1, need to signal, maybe some threads are wainting! */
-  if(wq->size == 1)
+  //if(wq->size == 1)
     pthread_cond_signal(&wq_empty);
 
   /* Release the lock */
   pthread_mutex_unlock(&wq_mutex);
-  // printf("Pushed, returning...\n");
+  printf("Pushed %d, returning...\n", client_socket_fd);
 }

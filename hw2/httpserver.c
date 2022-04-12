@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 #include "libhttp.h"
 #include "wq.h"
@@ -36,6 +37,7 @@ struct proxy_socket {
   int fd;
   int cl_sock_fd;
   pthread_cond_t *close_socks;
+  sem_t *done;
   int *finished;
 };
 
@@ -110,28 +112,40 @@ char *list_dirs(const char *path) {
 */
 void *proxy_thread_handle_upstream(void *socks) {
   char *buffer = malloc(PROXY_BUFFER_SIZE);
-  size_t data_len;
-  int write_status;
+  ssize_t data_len;
+  ssize_t total_data = 0;
+  int write_status = 0;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
+  printf("Into upstream handling fd=%d clfd=%d\n", 
+  my_sock->fd, my_sock->cl_sock_fd);
   while(1) {
-    // data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE, 0);
-    data_len = read(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1);
-    printf("Read-UP - %lu\n", data_len);
+    data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1, 0);
+    // data_len = read(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1);
+    if(data_len != PROXY_BUFFER_SIZE - 1)
+      printf("Read-UP - %ld\n", data_len);
     if(data_len <= 0) {
-      // printf("A problem in upstream read.\n");
+      printf("A problem in upstream read.\n");
       break;
     }
+    else {
+      total_data += data_len;
+      write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
+    }
     //send(my_sock->cl_sock_fd, buffer, data_len, 0);
-    write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
+    // write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
     if(write_status < 0) {
-      // printf("A problem in upstream write.\n");
+      printf("A problem in upstream write.\n");
       break;
     }
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
   *(my_sock->finished) = 1;
-  pthread_cond_signal(my_sock->close_socks);
-  printf("Leave upstream fd=%d clfd=%d\n", my_sock->fd, my_sock->cl_sock_fd);
+  // pthread_cond_signal(my_sock->close_socks);
+  sem_post(my_sock->done);
+  printf("Leave upstream fd=%d clfd=%d recv=%ld tot_read=%ld\n", my_sock->fd, 
+  my_sock->cl_sock_fd, recv(my_sock->fd, buffer, 
+  PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+  return NULL;
 }
 
 /*
@@ -141,28 +155,40 @@ void *proxy_thread_handle_upstream(void *socks) {
 */
 void *proxy_thread_handle_downstream(void *socks) {
   char *buffer = malloc(PROXY_BUFFER_SIZE);
-  size_t data_len;
+  ssize_t data_len;
+  ssize_t total_data;
   int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
+  printf("Into downstream handling fd=%d clfd=%d\n", 
+  my_sock->fd, my_sock->cl_sock_fd);
   while(1) {
-    //data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE, 0);
-    data_len = read(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1);
-    printf("Read-DOWN - %lu\n", data_len);
+    data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1, 0);
+    // data_len = read(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1);
+    if(data_len != PROXY_BUFFER_SIZE - 1)
+      printf("Read-DOWN - %ld\n", data_len);
     if(data_len <= 0) {
-      // printf("A problem in downstream read.\n");
+      printf("A problem in downstream read.\n");
       break;
     }
+    else {
+      total_data += data_len;
+      write_status = http_send_data(my_sock->fd, buffer, data_len);
+    }
     //send(my_sock->fd, buffer, data_len, 0);
-    write_status = http_send_data(my_sock->fd, buffer, data_len);
+    // write_status = http_send_data(my_sock->fd, buffer, data_len);
     if(write_status < 0) {
-      // printf("A problem in downstream write.\n");
+      printf("A problem in downstream write.\n");
       break;
     }
     // printf("Transfered %lu bytes downstream\n", data_len);
   }
   *(my_sock->finished) = 1;
-  pthread_cond_signal(my_sock->close_socks);
-  printf("Leave downstream fd=%d clfd=%d\n", my_sock->fd, my_sock->cl_sock_fd);
+  // pthread_cond_signal(my_sock->close_socks);
+  sem_post(my_sock->done);
+  printf("Leave downstream fd=%d clfd=%d, rec=%ld tot_read=%ld\n", 
+  my_sock->fd, my_sock->cl_sock_fd, recv(my_sock->cl_sock_fd, buffer, 
+  PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+  return NULL;
 }
 
 /*
@@ -265,9 +291,11 @@ void handle_files_request(int fd) {
   while(1) {
     /* Get the new fd from work queue */
     fd = wq_pop(&work_queue);
+    printf("Start processing %d\n", fd);
 
     /* Serve and close the fd */
     struct http_request *request = http_request_parse(fd);
+    printf("FILEREQ parsed %d\n", fd);
 
     if (request == NULL || request->path[0] != '/') {
       http_start_response(fd, 400);
@@ -286,7 +314,7 @@ void handle_files_request(int fd) {
     }
 
     /*
-    /* Remove beginning `./` 
+    /* Remove beginning dot-slash 
     char *path = malloc(2 + strlen(request->path) + 1);
     path[0] = '.';
     path[1] = '/';
@@ -311,7 +339,7 @@ void handle_files_request(int fd) {
     /* Get information about the specified path */
     struct stat stat_buf;
     if(stat(path, &stat_buf)) { // If an error occures
-      char *err = strerror(errno);
+      //char *err = strerror(errno);
       // Handle the error here
       // printf("Req for %s : %s\n", request->path, path);
       // printf("Stat returned error %d : %s\n", errno, err);
@@ -324,13 +352,15 @@ void handle_files_request(int fd) {
     else { // If the specified path exists
       /* If a file is specified */
       if(S_ISREG(stat_buf.st_mode)) {
-        // printf("Into file serve\n");
+        printf("Into file serve %d\n", fd);
         serve_file(fd, path);
+        printf("Out of file serve %d\n", fd);
       }
       /* If a directory is specified */
       else if(S_ISDIR(stat_buf.st_mode)) {
-        // printf("Into directory serve\n");
+        printf("Into directory serve %d\n", fd);
         serve_directory(fd, path);
+        printf("Out of directory serve %d\n", fd);
       }
     }
 
@@ -371,6 +401,7 @@ void handle_proxy_request(int fd) {
   while(1) {
     /* Get a new fd from work queue */
     fd = wq_pop(&work_queue);
+    printf("Start proxy %d\n", fd);
 
     /* Serve and close fd */
     struct sockaddr_in target_address;
@@ -418,27 +449,32 @@ void handle_proxy_request(int fd) {
     pthread_cond_t proxy_cond;
     pthread_mutex_t proxy_mutex;
     int finished = 0;
-    pthread_cond_init(&proxy_cond, NULL);
-    pthread_mutex_init(&proxy_mutex, NULL);
+    // pthread_cond_init(&proxy_cond, NULL);
+    // pthread_mutex_init(&proxy_mutex, NULL);
     struct proxy_socket up_sockets, down_sockets;
     up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
     down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd;
-    up_sockets.close_socks = down_sockets.close_socks = &proxy_cond; 
+    // up_sockets.close_socks = down_sockets.close_socks = &proxy_cond; 
     up_sockets.finished = down_sockets.finished = &finished;
 
+    sem_t proxy_done;
+    sem_init(&proxy_done, 0, 0);
+    up_sockets.done = &proxy_done;
+    printf("Starting proxy threads fd=%d clfd=%d\n", fd, client_socket_fd);
     pthread_t upstream_thread, downstream_thread;
     pthread_create(&upstream_thread, NULL, proxy_thread_handle_upstream, &up_sockets);
     pthread_create(&downstream_thread, NULL, proxy_thread_handle_downstream, &up_sockets);
 
-    if(finished == 0) 
-      pthread_cond_wait(&proxy_cond, &proxy_mutex);
+    // if(finished == 0) 
+    //   pthread_cond_wait(&proxy_cond, &proxy_mutex);
+    sem_wait(&proxy_done);
 
     // pthread_join(upstream_thread, NULL);
     // pthread_join(downstream_thread, NULL);
     close(fd);
     close(client_socket_fd);
-    pthread_mutex_destroy(&proxy_mutex);
-    pthread_cond_destroy(&proxy_cond);
+    // pthread_mutex_destroy(&proxy_mutex);
+    // pthread_cond_destroy(&proxy_cond);
     printf("Closed both sockets\n");
   }
   
