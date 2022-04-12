@@ -36,7 +36,11 @@
 struct proxy_socket {
   int fd;
   int cl_sock_fd;
-  pthread_cond_t *close_socks;
+  pthread_cond_t *up;
+  pthread_cond_t *down;
+  pthread_cond_t *status_wait;
+  pthread_mutex_t *status_check;
+  pthread_mutex_t *downmu;
   sem_t *done;
   int *finished;
 };
@@ -119,6 +123,7 @@ void *proxy_thread_handle_upstream(void *socks) {
   printf("Into upstream handling fd=%d clfd=%d\n", 
   my_sock->fd, my_sock->cl_sock_fd);
   while(1) {
+
     data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1, 0);
     // data_len = read(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1);
     if(data_len != PROXY_BUFFER_SIZE - 1)
@@ -139,7 +144,20 @@ void *proxy_thread_handle_upstream(void *socks) {
     }
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
-  *(my_sock->finished) = 1;
+  pthread_mutex_lock(my_sock->status_check);
+  if(*my_sock->finished == 0) {
+    *(my_sock->finished) = 1;
+    printf("Up waiting...\n");
+    pthread_cond_wait(my_sock->status_wait, my_sock->status_check);
+  }
+  else if(*my_sock->finished == 1) {
+    *(my_sock->finished) = 2;
+    printf("Up signaling...\n");
+    pthread_cond_signal(my_sock->status_wait);
+  }
+  pthread_mutex_unlock(my_sock->status_check);
+  // *(my_sock->finished) = 1;
+
   // pthread_cond_signal(my_sock->close_socks);
   sem_post(my_sock->done);
   printf("Leave upstream fd=%d clfd=%d recv=%ld tot_read=%ld\n", my_sock->fd, 
@@ -182,8 +200,20 @@ void *proxy_thread_handle_downstream(void *socks) {
     }
     // printf("Transfered %lu bytes downstream\n", data_len);
   }
-  *(my_sock->finished) = 1;
+  // *(my_sock->finished) = 1;
   // pthread_cond_signal(my_sock->close_socks);
+  pthread_mutex_lock(my_sock->status_check);
+  if(*my_sock->finished == 0) {
+    *(my_sock->finished) = 1;
+    printf("Down waiting...\n");
+    pthread_cond_wait(my_sock->status_wait, my_sock->status_check);
+  }
+  else if(*my_sock->finished == 1) {
+    *(my_sock->finished) = 2;
+    printf("Down signaling...\n");
+    pthread_cond_signal(my_sock->status_wait);
+  }
+  pthread_mutex_unlock(my_sock->status_check);
   sem_post(my_sock->done);
   printf("Leave downstream fd=%d clfd=%d, rec=%ld tot_read=%ld\n", 
   my_sock->fd, my_sock->cl_sock_fd, recv(my_sock->cl_sock_fd, buffer, 
@@ -449,13 +479,14 @@ void handle_proxy_request(int fd) {
     pthread_cond_t proxy_cond;
     pthread_mutex_t proxy_mutex;
     int finished = 0;
-    // pthread_cond_init(&proxy_cond, NULL);
-    // pthread_mutex_init(&proxy_mutex, NULL);
+    pthread_cond_init(&proxy_cond, NULL);
+    pthread_mutex_init(&proxy_mutex, NULL);
     struct proxy_socket up_sockets, down_sockets;
     up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
     down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd;
-    // up_sockets.close_socks = down_sockets.close_socks = &proxy_cond; 
+    up_sockets.status_wait = down_sockets.status_wait = &proxy_cond; 
     up_sockets.finished = down_sockets.finished = &finished;
+    up_sockets.status_check = &proxy_mutex;
 
     sem_t proxy_done;
     sem_init(&proxy_done, 0, 0);
@@ -468,11 +499,12 @@ void handle_proxy_request(int fd) {
     // if(finished == 0) 
     //   pthread_cond_wait(&proxy_cond, &proxy_mutex);
     sem_wait(&proxy_done);
-
-    // pthread_join(upstream_thread, NULL);
-    // pthread_join(downstream_thread, NULL);
+    printf("Passed semwait fd=%d %d\n", fd, client_socket_fd);
+    pthread_join(upstream_thread, NULL);
+    pthread_join(downstream_thread, NULL);
     close(fd);
     close(client_socket_fd);
+    sem_destroy(&proxy_done);
     // pthread_mutex_destroy(&proxy_mutex);
     // pthread_cond_destroy(&proxy_cond);
     printf("Closed both sockets\n");
