@@ -505,8 +505,8 @@ void handle_proxy_request(int fd) {
     close(fd);
     close(client_socket_fd);
     sem_destroy(&proxy_done);
-    // pthread_mutex_destroy(&proxy_mutex);
-    // pthread_cond_destroy(&proxy_cond);
+    pthread_mutex_destroy(&proxy_mutex);
+    pthread_cond_destroy(&proxy_cond);
     printf("Closed both sockets\n");
   }
   
