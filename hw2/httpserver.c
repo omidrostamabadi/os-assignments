@@ -89,7 +89,6 @@ char *list_dirs(const char *path) {
   /* Iterate over all enteries and put a reference to each */
   while((dirp = readdir(dp)) != NULL) {
     if(strcmp(".", dirp->d_name) && strcmp("..", dirp->d_name)) { // Skip . and ..
-      // printf("name=%s type=%d\n", dirp->d_name, dirp->d_type);
       if(dirp->d_type == 4) { // A directory, should add '/' to the end of the link
         sprintf(tmp_ent_name, "<a href=\"./%s/\">%s</a><br>\n", dirp->d_name, dirp->d_name);
         strcat(dir_list_html, tmp_ent_name);
@@ -98,8 +97,6 @@ char *list_dirs(const char *path) {
         sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
         strcat(dir_list_html, tmp_ent_name);
       }
-      // sprintf(tmp_ent_name, "<a href=\"./%s\">%s</a><br>\n", dirp->d_name, dirp->d_name);
-      // strcat(dir_list_html, tmp_ent_name);
     }
   }
 
@@ -115,40 +112,35 @@ char *list_dirs(const char *path) {
 * Thread should terminate if the other thread has exited
 */
 void *proxy_thread_handle_upstream(void *socks) {
+  /* Initialize buffer & variables */
   char *buffer = malloc(PROXY_BUFFER_SIZE);
   ssize_t data_len;
-  ssize_t total_data = 0;
   int write_status = 0;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
-  printf("Into upstream handling fd=%d clfd=%d\n", 
-  my_sock->fd, my_sock->cl_sock_fd);
-  while(1) {
 
+  /* Read from fd and write to client_socket_fd */
+  while(1) {
     data_len = recv(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1, 0);
-    // data_len = read(my_sock->fd, buffer, PROXY_BUFFER_SIZE - 1);
-    if(data_len != PROXY_BUFFER_SIZE - 1)
-      printf("Read-UP - %ld\n", data_len);
-    if(data_len <= 0) {
-      printf("A problem in upstream read.\n");
+    if(data_len <= 0) { // fd has been closed, break
       break;
     }
     else {
-      total_data += data_len;
       write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
     }
-    //send(my_sock->cl_sock_fd, buffer, data_len, 0);
-    // write_status = http_send_data(my_sock->cl_sock_fd, buffer, data_len);
-    if(write_status < 0) {
-      printf("A problem in upstream write.\n");
+
+    if(write_status < 0) { // write failed, cl_sock_fd has been closed
       break;
     }
-    // printf("Transfered %lu bytes upstream\n", data_len);
   }
+
+  /* Inform peer thread that we will not be writing anymore, so read in 
+  down stream fails and exits the while loop */
   shutdown(my_sock->cl_sock_fd, SHUT_WR);
+
+  /* We wait for peer thread to finish */
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
-    printf("Up waiting...\n");
     pthread_cond_wait(my_sock->status_wait, my_sock->status_check);
   }
   else if(*my_sock->finished == 1) {
@@ -157,13 +149,11 @@ void *proxy_thread_handle_upstream(void *socks) {
     pthread_cond_signal(my_sock->status_wait);
   }
   pthread_mutex_unlock(my_sock->status_check);
-  // *(my_sock->finished) = 1;
 
-  // pthread_cond_signal(my_sock->close_socks);
+  /* Infrom parent thread to close the sockets */
   sem_post(my_sock->done);
-  printf("Leave upstream fd=%d clfd=%d recv=%ld tot_read=%ld\n", my_sock->fd, 
-  my_sock->cl_sock_fd, recv(my_sock->fd, buffer, 
-  PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+
+  /* Free resources and exit */
   free(buffer);
   return NULL;
 }
@@ -174,53 +164,47 @@ void *proxy_thread_handle_upstream(void *socks) {
 * Thread should terminate if the other thread has exited
 */
 void *proxy_thread_handle_downstream(void *socks) {
+  /* Initialize buffer & variables */
   char *buffer = malloc(PROXY_BUFFER_SIZE);
   ssize_t data_len;
-  ssize_t total_data;
   int write_status;
   struct proxy_socket *my_sock = (struct proxy_socket*) socks;
-  printf("Into downstream handling fd=%d clfd=%d\n", 
-  my_sock->fd, my_sock->cl_sock_fd);
+
+  /* Read from client_socket_fd and write to fd */
   while(1) {
     data_len = recv(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1, 0);
-    // data_len = read(my_sock->cl_sock_fd, buffer, PROXY_BUFFER_SIZE - 1);
-    if(data_len != PROXY_BUFFER_SIZE - 1)
-      printf("Read-DOWN - %ld\n", data_len);
-    if(data_len <= 0) {
-      printf("A problem in downstream read.\n");
+    if(data_len <= 0) { // Read failed, break
       break;
     }
     else {
-      total_data += data_len;
       write_status = http_send_data(my_sock->fd, buffer, data_len);
     }
-    //send(my_sock->fd, buffer, data_len, 0);
-    // write_status = http_send_data(my_sock->fd, buffer, data_len);
-    if(write_status < 0) {
-      printf("A problem in downstream write.\n");
+
+    if(write_status < 0) { // Write failed, break
       break;
     }
-    // printf("Transfered %lu bytes downstream\n", data_len);
   }
-  // *(my_sock->finished) = 1;
-  // pthread_cond_signal(my_sock->close_socks);
+
+  /* Inform peer thread that we will not be writing anymore, so read in 
+  down stream fails and exits the while loop */
   shutdown(my_sock->fd, SHUT_WR);
+
+  /* We wait for peer thread to finish */
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
-    printf("Down waiting...\n");
     pthread_cond_wait(my_sock->status_wait, my_sock->status_check);
   }
   else if(*my_sock->finished == 1) {
     *(my_sock->finished) = 2;
-    printf("Down signaling...\n");
     pthread_cond_signal(my_sock->status_wait);
   }
   pthread_mutex_unlock(my_sock->status_check);
+
+  /* Infrom parent thread to close the sockets */
   sem_post(my_sock->done);
-  printf("Leave downstream fd=%d clfd=%d, rec=%ld tot_read=%ld\n", 
-  my_sock->fd, my_sock->cl_sock_fd, recv(my_sock->cl_sock_fd, buffer, 
-  PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+
+  /* Free resources and exit */
   free(buffer);
   return NULL;
 }
@@ -325,11 +309,9 @@ void handle_files_request(int fd) {
   while(1) {
     /* Get the new fd from work queue */
     fd = wq_pop(&work_queue);
-    printf("Start processing %d\n", fd);
 
     /* Serve and close the fd */
     struct http_request *request = http_request_parse(fd);
-    printf("FILEREQ parsed %d\n", fd);
 
     if (request == NULL || request->path[0] != '/') {
       http_start_response(fd, 400);
@@ -347,24 +329,7 @@ void handle_files_request(int fd) {
       return;
     }
 
-    /*
-    /* Remove beginning dot-slash 
-    char *path = malloc(2 + strlen(request->path) + 1);
-    path[0] = '.';
-    path[1] = '/';
-    memcpy(path + 2, request->path, strlen(request->path) + 1);
-    */
-
-    /* 
-    * TODO: First is to serve files. If the file given by `path` exists,
-    * call serve_file() on it. Else, serve a 404 Not Found error below.
-    *
-    * TODO: Second is to serve both files and directories. You will need to
-    * determine when to call serve_file() or serve_directory() depending
-    * on `path`.
-    *  
-    * Feel FREE to delete/modify anything on this function.
-    */
+    
     /* The request->path variable is relative to server_files_directory */
     char *path = malloc(strlen(server_files_directory) + strlen(request->path) + 2);
     strcpy(path, server_files_directory);
@@ -373,10 +338,6 @@ void handle_files_request(int fd) {
     /* Get information about the specified path */
     struct stat stat_buf;
     if(stat(path, &stat_buf)) { // If an error occures
-      //char *err = strerror(errno);
-      // Handle the error here
-      // printf("Req for %s : %s\n", request->path, path);
-      // printf("Stat returned error %d : %s\n", errno, err);
       http_start_response(fd, 404);
       http_send_header(fd, "Content-Type", "text/html");
       http_end_headers(fd);
@@ -397,17 +358,6 @@ void handle_files_request(int fd) {
         printf("Out of directory serve %d\n", fd);
       }
     }
-
-    /*
-    http_start_response(fd, 200);
-    http_send_header(fd, "Content-Type", "text/html");
-    http_end_headers(fd);
-    http_send_string(fd,
-        "<center>"
-        "<h1>Welcome to httpserver!</h1>"
-        "<hr>"
-        "<p>Nothing's here yet.</p>"
-        "</center>"); */
 
     close(fd);
   }
@@ -454,7 +404,6 @@ void handle_proxy_request(int fd) {
 
     if (target_dns_entry == NULL) {
       fprintf(stderr, "Cannot find host: %s\n", server_proxy_hostname);
-    //  close(target_fd);
       close(fd);
       exit(ENXIO);
     }
@@ -473,45 +422,51 @@ void handle_proxy_request(int fd) {
       http_send_header(fd, "Content-Type", "text/html");
       http_end_headers(fd);
       http_send_string(fd, "<center><h1>502 Bad Gateway</h1><hr></center>");
-    //  close(target_fd);
       close(fd);
       return;
 
     }
+
     /* Create two thread handles, upstream will send data from fd to client_socket_fd
     * and downstream will do the reverse */
     pthread_cond_t proxy_cond;
     pthread_mutex_t proxy_mutex;
-    int finished = 0;
     pthread_cond_init(&proxy_cond, NULL);
     pthread_mutex_init(&proxy_mutex, NULL);
-    struct proxy_socket up_sockets, down_sockets;
-    up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd; 
-    down_sockets.cl_sock_fd = client_socket_fd; down_sockets.fd = fd;
-    up_sockets.status_wait = down_sockets.status_wait = &proxy_cond; 
-    up_sockets.finished = down_sockets.finished = &finished;
+
+    int finished = 0;
+
+    struct proxy_socket up_sockets;
+    up_sockets.cl_sock_fd = client_socket_fd; up_sockets.fd = fd;
+    up_sockets.status_wait =  &proxy_cond; 
+    up_sockets.finished = &finished;
     up_sockets.status_check = &proxy_mutex;
 
     sem_t proxy_done;
     sem_init(&proxy_done, 0, 0);
+
     up_sockets.done = &proxy_done;
-    printf("Starting proxy threads fd=%d clfd=%d\n", fd, client_socket_fd);
     pthread_t upstream_thread, downstream_thread;
+
+    /* Create read/write threads for current request */
     pthread_create(&upstream_thread, NULL, proxy_thread_handle_upstream, &up_sockets);
     pthread_create(&downstream_thread, NULL, proxy_thread_handle_downstream, &up_sockets);
 
-    // if(finished == 0) 
-    //   pthread_cond_wait(&proxy_cond, &proxy_mutex);
+    /* Wait for threads to signal finish */
     sem_wait(&proxy_done);
-    printf("Passed semwait fd=%d %d\n", fd, client_socket_fd);
+
+    /* Wait for threads to free their resources and completely finish */
     pthread_join(upstream_thread, NULL);
     pthread_join(downstream_thread, NULL);
+
+    /* Close the sockets properly */
     close(fd);
     close(client_socket_fd);
+    
+    /* Destroy synchronization primitives used */
     sem_destroy(&proxy_done);
     pthread_mutex_destroy(&proxy_mutex);
     pthread_cond_destroy(&proxy_cond);
-    printf("Closed both sockets\n");
   }
   
 
