@@ -144,7 +144,7 @@ void *proxy_thread_handle_upstream(void *socks) {
     }
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
-  shutdown(my_sock->fd, SHUT_WR);
+  shutdown(my_sock->cl_sock_fd, SHUT_WR);
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
@@ -204,7 +204,7 @@ void *proxy_thread_handle_downstream(void *socks) {
   }
   // *(my_sock->finished) = 1;
   // pthread_cond_signal(my_sock->close_socks);
-  shutdown(my_sock->cl_sock_fd, SHUT_WR);
+  shutdown(my_sock->fd, SHUT_WR);
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
