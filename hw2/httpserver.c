@@ -144,6 +144,7 @@ void *proxy_thread_handle_upstream(void *socks) {
     }
     // printf("Transfered %lu bytes upstream\n", data_len);
   }
+  shutdown(my_sock->fd, SHUT_WR);
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
@@ -163,6 +164,7 @@ void *proxy_thread_handle_upstream(void *socks) {
   printf("Leave upstream fd=%d clfd=%d recv=%ld tot_read=%ld\n", my_sock->fd, 
   my_sock->cl_sock_fd, recv(my_sock->fd, buffer, 
   PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+  free(buffer);
   return NULL;
 }
 
@@ -202,6 +204,7 @@ void *proxy_thread_handle_downstream(void *socks) {
   }
   // *(my_sock->finished) = 1;
   // pthread_cond_signal(my_sock->close_socks);
+  shutdown(my_sock->cl_sock_fd, SHUT_WR);
   pthread_mutex_lock(my_sock->status_check);
   if(*my_sock->finished == 0) {
     *(my_sock->finished) = 1;
@@ -218,6 +221,7 @@ void *proxy_thread_handle_downstream(void *socks) {
   printf("Leave downstream fd=%d clfd=%d, rec=%ld tot_read=%ld\n", 
   my_sock->fd, my_sock->cl_sock_fd, recv(my_sock->cl_sock_fd, buffer, 
   PROXY_BUFFER_SIZE - 1, MSG_PEEK | MSG_DONTWAIT), total_data);
+  free(buffer);
   return NULL;
 }
 
