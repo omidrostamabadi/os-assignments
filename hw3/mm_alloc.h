@@ -11,6 +11,8 @@
 
  /* Define the block size since the sizeof will be wrong */
 #define BLOCK_SIZE 40
+#define TRUE 1
+#define FALSE 0
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +37,8 @@ struct s_block {
     /* A pointer to the allocated block */
     char data [0];
  };
+
+ typedef struct s_block s_block_t;
 
 /* Split block according to size, b must exist */
 void split_block (s_block_ptr b, size_t s);
