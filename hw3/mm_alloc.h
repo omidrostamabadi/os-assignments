@@ -1,9 +1,3 @@
-/*
- * mm_alloc.h
- *
- * Exports a clone of the interface documented in "man 3 mm_malloc".
- */
-
 #pragma once
 
 #ifndef _malloc_H_

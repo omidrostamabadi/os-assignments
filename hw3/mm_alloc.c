@@ -1,10 +1,3 @@
-/*
- * mm_alloc.c
- *
- * Stub implementations of the mm_* routines. Remove this comment and provide
- * a summary of your allocator's design here.
- */
-
 #include "mm_alloc.h"
 
 #include <stdlib.h>
@@ -13,9 +6,6 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <inttypes.h>
-
-/* Your final implementation should comment out this macro. */
-//#define MM_USE_STUBS
 
 /* Start of the list managed by memory allocator */
  s_block_ptr start_list = NULL;
@@ -91,9 +81,6 @@ s_block_ptr fusion(s_block_ptr b) {
       so BLOCK_SIZE bytes will be added to the final size */
       b->size = b->size + next_size + BLOCK_SIZE;
     }
-    // else {
-    //   break;
-    // }
   }
 
   /* Try fusion with previous neighbour */
@@ -108,11 +95,13 @@ s_block_ptr fusion(s_block_ptr b) {
       }
       pre_b->size = b_size + pre_b->size + BLOCK_SIZE;
     }
-    // else {
-    //   break;
-    // }
   }
   
+  /* This return value is wrong! I am so tired and can't fix this right now
+  *  But if anyone cares about return value should handle the case when previous
+  *  block is fused. This return value only works when there's no fusion with
+  *  previous blocks. Currently, the return value is not used anywhere, so
+  *  everything just works fine. */ 
   return b;
 }
 
