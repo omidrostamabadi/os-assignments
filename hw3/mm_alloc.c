@@ -37,7 +37,7 @@ s_block_ptr extend_heap (s_block_ptr last , size_t s) {
     return NULL;
   
   /* Add the block to heap linked list before returning */
-  new_block->free = TRUE;
+  new_block->is_free = TRUE;
   new_block->prev = NULL;
   new_block->size = s;
   last->next = new_block;
@@ -51,7 +51,7 @@ void split_block (s_block_ptr b, size_t s) {
   
   s_block_ptr second_block = b->data[s]; // Keep s bytes for current block
 
-  second_block->free = TRUE; // Mark new block as free
+  second_block->is_free = TRUE; // Mark new block as is_free
 
   /* Update size of blocks properly */
   second_block->size = b->size - s;
@@ -66,7 +66,7 @@ void split_block (s_block_ptr b, size_t s) {
 s_block_ptr fusion(s_block_ptr b) {
   /* Try fusion with next neighbour */
   if(b->next != NULL) {
-    if(b->next->free == TRUE) {
+    if(b->next->is_free == TRUE) {
       b->next = b->next->next;
       /* Accumulate data segments, and also mix two meta data as one,
       so BLOCK_SIZE bytes will be added to the final size */
@@ -76,7 +76,7 @@ s_block_ptr fusion(s_block_ptr b) {
 
   /* Try fusion with previous neighbour */
   if(b->prev != NULL) {
-    if(b->prev->free == TRUE) {
+    if(b->prev->is_free == TRUE) {
       b->prev = b->prev->prev;
       b->size = b->size + b->prev->size + BLOCK_SIZE;
     }
@@ -101,7 +101,7 @@ s_block_ptr get_free_block(size_t size) {
     
     /* Set meta data of the struct */
     start_list->size = size;
-    start_list->free = FALSE;
+    start_list->is_free = FALSE;
     start_list->next = NULL;
     start_list->prev = NULL;
     
@@ -109,11 +109,11 @@ s_block_ptr get_free_block(size_t size) {
     return start_list;
   }
 
-  /* Traverse the list to get a free block of at least that size */
+  /* Traverse the list to get a is_free block of at least that size */
   s_block_ptr first_fit = start_list;
   int block_found = FALSE;
   do {
-    if(first_fit->size >= size && first_fit->free == TRUE) {
+    if(first_fit->size >= size && first_fit->is_free == TRUE) {
       block_found = TRUE;
       break;
     }
@@ -125,7 +125,7 @@ s_block_ptr get_free_block(size_t size) {
 
   if(block_found == TRUE) {
     split_block(first_fit, size);
-    first_fit->free = FALSE;
+    first_fit->is_free = FALSE;
     return first_fit;
   }
   else { // There's no block with enough size, extend heap
@@ -136,7 +136,7 @@ s_block_ptr get_free_block(size_t size) {
     first_fit->next = new_block;
     new_block->prev = first_fit;
     new_block->size = size;
-    new_block->free = FALSE;
+    new_block->is_free = FALSE;
     new_block->next = NULL;
     return new_block;
   }
@@ -152,7 +152,7 @@ void* mm_malloc(size_t size)
 
   s_block_ptr free_block = get_free_block(size);
 
-  /* Neither a free block of that size can be found, nor can extend 
+  /* Neither a is_free block of that size can be found, nor can extend 
   the heap to accomodate the need. */
   if(free_block == NULL) 
     return NULL;
@@ -164,7 +164,7 @@ void* mm_malloc(size_t size)
 
 /* 
 * The behaviour is defined due to linux man page for this function in C. 
-* If this fails, the original memory is untouched, neither free, nor moved.
+* If this fails, the original memory is untouched, neither is_free, nor moved.
 */
 void* mm_realloc(void* ptr, size_t size)
 {
@@ -207,6 +207,6 @@ void mm_free(void* ptr)
     return;
   
   s_block_ptr block_to_free = get_block(ptr);
-  block_to_free->free = TRUE;
+  block_to_free->is_free = TRUE;
   fusion(block_to_free);
 }
