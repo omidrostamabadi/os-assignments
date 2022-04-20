@@ -65,17 +65,21 @@ void split_block (s_block_ptr b, size_t s) {
 
 s_block_ptr fusion(s_block_ptr b) {
   /* Try fusion with next neighbour */
-  if(b->next->free == TRUE) {
-    b->next = b->next->next;
-    /* Accumulate data segments, and also mix two meta data as one,
-    so BLOCK_SIZE bytes will be added to the final size */
-    b->size = b->size + b->next->size + BLOCK_SIZE;
+  if(b->next != NULL) {
+    if(b->next->free == TRUE) {
+      b->next = b->next->next;
+      /* Accumulate data segments, and also mix two meta data as one,
+      so BLOCK_SIZE bytes will be added to the final size */
+      b->size = b->size + b->next->size + BLOCK_SIZE;
+    }
   }
 
   /* Try fusion with previous neighbour */
-  if(b->prev->free == TRUE) {
-    b->prev = b->prev->prev;
-    b->size = b->size + b->prev->size + BLOCK_SIZE;
+  if(b->prev != NULL) {
+    if(b->prev->free == TRUE) {
+      b->prev = b->prev->prev;
+      b->size = b->size + b->prev->size + BLOCK_SIZE;
+    }
   }
   
   return b;
@@ -90,17 +94,17 @@ s_block_ptr get_block (void *p) {
 s_block_ptr get_free_block(size_t size) {
   printf("%d\n", getpagesize());
   if(start_list == NULL) { // First call to malloc
-    s_block_ptr test_ptr = sbrk(0); // This call is needed, don't know why!
-    printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
+    // s_block_ptr test_ptr = sbrk(0); // This call is needed, don't know why!
+    // printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
 
     start_list = sbrk(PAGE_SIZE);
     printf("Start_list: %lx\n", (u_int64_t)start_list);
 
-    test_ptr = sbrk(0); // This call is needed, don't know why!
-    printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
+    // test_ptr = sbrk(0); // This call is needed, don't know why!
+    // printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
 
-    test_ptr = &(start_list->free);
-    printf("Address of free: %lx\n", (u_int64_t)test_ptr);
+    // test_ptr = &(start_list->free);
+    // printf("Address of free: %lx\n", (u_int64_t)test_ptr);
 
     if(start_list == (void*)-1) // sbrk failed
       return NULL;
@@ -151,10 +155,10 @@ void* mm_malloc(size_t size)
 #ifdef MM_USE_STUBS
     return calloc(1, size);
 #else
-  struct rlimit rlim;
-  if(getrlimit(RLIMIT_DATA, &rlim)) printf("ERRR\n");
+  // struct rlimit rlim;
+  // if(getrlimit(RLIMIT_DATA, &rlim)) printf("ERRR\n");
 
-  printf("RLIM: curr: %ld  max: %ld\n", rlim.rlim_cur, rlim.rlim_max);
+  // printf("RLIM: curr: %ld  max: %ld\n", rlim.rlim_cur, rlim.rlim_max);
 
   char *test_ptr = sbrk(0);
   printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
@@ -170,7 +174,9 @@ void* mm_malloc(size_t size)
     return NULL;
   
   memset(free_block->data, 0, size); // Zero fill new block
-  return (s_block_ptr)(free_block->data);
+  printf("Address of free block: %lx (data = %lx)\n", 
+  (u_int64_t)free_block, (u_int64_t)&(free_block->data));
+  return (void*)(free_block->data);
 #endif
 }
 
@@ -192,6 +198,8 @@ void mm_free(void* ptr)
     return;
   
   s_block_ptr block_to_free = get_block(ptr);
+  printf("Address of block to free: %lx (data = %lx)\n", 
+  (u_int64_t)block_to_free, (u_int64_t)&(block_to_free->data));
   block_to_free->free = TRUE;
   fusion(block_to_free);
 #endif

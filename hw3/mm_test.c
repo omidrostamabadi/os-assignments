@@ -7,9 +7,11 @@ int main(int argc, char **argv)
 {
     int *data;
 
-   data = (int*) mm_malloc(24);
+   data = (int*) mm_malloc(8);
    data[0] = 68;
-   printf("data %d\n", data[0]);
+   data[1] = 78;
+   printf("data %d %d\n", data[0], data[1]);
+   mm_free(data);
    printf("Hooray! malloc passed!\n");
   //  data[0] = 1;
   //  mm_free(data);
