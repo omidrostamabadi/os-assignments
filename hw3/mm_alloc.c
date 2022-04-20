@@ -30,7 +30,7 @@
 */
 s_block_ptr extend_heap (s_block_ptr last , size_t s) {
   /* Request allocation of the new block */
-  s_block_t *new_block = sbrk(s + BLOCK_SIZE);
+  s_block_ptr new_block = sbrk(s + BLOCK_SIZE);
 
   if(new_block == (void*)-1) // Cannot extend heap
     return NULL;
@@ -71,7 +71,7 @@ void split_block (s_block_ptr b, size_t s) {
 
 s_block_ptr fusion(s_block_ptr b) {
   /* Try fusion with next neighbour */
-  if(b->next != NULL) {
+  while(b->next != NULL) {
     if(b->next->is_free == TRUE) {
       size_t next_size = b->next->size;
       s_block_ptr past_next = b->next->next;
@@ -86,7 +86,7 @@ s_block_ptr fusion(s_block_ptr b) {
   }
 
   /* Try fusion with previous neighbour */
-  if(b->prev != NULL) {
+  while(b->prev != NULL) {
     if(b->prev->is_free == TRUE) {
       size_t prev_size = b->prev->size;
       s_block_ptr pre_prev = b->prev->prev;
