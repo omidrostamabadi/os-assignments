@@ -1,4 +1,4 @@
-I finished judging your code on 20-04-2022 at 20:31:03.
+I finished judging your code on 20-04-2022 at 20:37:30.
 
 I ran your code on each test case separately! You can see the results below:
 
@@ -8,12 +8,7 @@ Test 1: Simple test of alloc and free --> OK! 1.95 points; Afarin!!!
 
 
 ================================================================================================================
-Test 2: Test of exceptional cases --> Runtime error occurred (Exit code: -11)
-Although you got no points from this test, below is the output of the test (STDOUT):
-----------<BEGIN AUTO GENERATED OUTPUT>-----------
-
-
------------<END AUTO GENERATED OUTPUT>------------
+Test 2: Test of exceptional cases --> OK! 2.15 points; Afarin!!!
 ================================================================================================================
 
 
@@ -69,4 +64,4 @@ Test 9: Realloc complicated test --> OK! 17.5 points; Afarin!!!
 Test 10: Two dimensional array with arithmetic calculations on a real-world problem --> OK! 13.8 points; Afarin!!!
 ================================================================================================================
 
-Your final grade is: 76.35/100.0epoch: 1650486663
+Your final grade is: 78.5/100.0epoch: 1650487050
