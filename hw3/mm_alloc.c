@@ -92,7 +92,6 @@ s_block_ptr get_block (void *p) {
 }
 
 s_block_ptr get_free_block(size_t size) {
-  printf("%d\n", getpagesize());
   if(start_list == NULL) { // First call to malloc
     // s_block_ptr test_ptr = sbrk(0); // This call is needed, don't know why!
     // printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
@@ -127,8 +126,11 @@ s_block_ptr get_free_block(size_t size) {
       block_found = TRUE;
       break;
     }
-    first_fit = first_fit->next;
-  } while(first_fit->next != NULL);
+    if(first_fit->next != NULL)
+      first_fit = first_fit->next;
+    else
+      break;
+  } while(1);
 
   if(block_found == TRUE) {
     split_block(first_fit, size);
@@ -180,11 +182,47 @@ void* mm_malloc(size_t size)
 #endif
 }
 
+/* 
+* The behaviour is defined due to linux man page for this function in C. 
+* If this fails, the original memory is untouched, neither free, nor moved.
+*/
 void* mm_realloc(void* ptr, size_t size)
 {
 #ifdef MM_USE_STUBS
     return realloc(ptr, size);
 #else
+if(size == 0) {
+  mm_free(ptr);
+  return NULL;
+}
+
+if(ptr == NULL) {
+  return mm_malloc(size);
+}
+
+s_block_ptr primary_block;
+s_block_ptr secondary_block;
+void *sec_ptr;
+
+/* Get the block from user ptr */
+primary_block = get_block(ptr);
+size_t old_size = primary_block->size;
+
+sec_ptr = mm_malloc(size);
+if(sec_ptr == NULL)
+  return NULL;
+
+if(old_size <= size) {
+  memcpy(sec_ptr, ptr, old_size); // Move data to new block
+  memset((char*)sec_ptr + old_size, 0, size - old_size); // Zero tail of new block
+}
+else {
+  memcpy(sec_ptr, ptr, size);
+}
+mm_free(ptr);
+
+return sec_ptr;
+
 
 #endif
 }

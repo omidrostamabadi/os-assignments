@@ -11,6 +11,9 @@ int main(int argc, char **argv)
    data[0] = 68;
    data[1] = 78;
    printf("data %d %d\n", data[0], data[1]);
+   mm_realloc(data, 12);
+   data[2] = 98;
+   printf("data %d %d %d\n", data[0], data[1], data[2]);
    mm_free(data);
    printf("Hooray! malloc passed!\n");
   //  data[0] = 1;
