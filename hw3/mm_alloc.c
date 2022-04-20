@@ -22,6 +22,10 @@
 
 /* Helper functions are defined here */
 
+char *get_data_ptr(char *block_ptr) {
+  return (block_ptr + BLOCK_SIZE);
+}
+
 /* 
  * Add a block of size s at the end of the heap.
  * Last should be last block in list, meaning that 
@@ -47,11 +51,11 @@ s_block_ptr extend_heap (s_block_ptr last , size_t s) {
 
 void split_block (s_block_ptr b, size_t s) {
   if(b->size <= s + BLOCK_SIZE) { // Cannot split block
-    memset(b->data, 0, b->size);
+    memset(get_data_ptr(b), 0, b->size);
     return;
   }
   
-  s_block_ptr second_block = &(b->data[s]); // Keep s bytes for current block
+  s_block_ptr second_block = (get_data_ptr(b) + s); // Keep s bytes for current block
 
   second_block->is_free = TRUE; // Mark new block as is_free
 
@@ -176,9 +180,9 @@ void* mm_malloc(size_t size)
   if(free_block == NULL) 
     return NULL;
   
-  memset(free_block->data, 0, size); // Zero fill new block
+  memset(get_data_ptr(free_block), 0, size); // Zero fill new block
 
-  return (void*)(free_block->data);
+  return (void*)(get_data_ptr(free_block));
 }
 
 /* 
