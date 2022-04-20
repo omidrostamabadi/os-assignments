@@ -1,4 +1,4 @@
-I finished judging your code on 20-04-2022 at 17:59:14.
+I finished judging your code on 20-04-2022 at 18:11:23.
 
 I ran your code on each test case separately! You can see the results below:
 
@@ -10,6 +10,7 @@ Although you got no points from this test, below is the output of the test (STDO
 Malloc didn't crash!
 Malloc first step is ok!
 A simple cmp is ok.
+Simple free is ok!
 
 -----------<END AUTO GENERATED OUTPUT>------------
 ================================================================================================================
@@ -54,13 +55,12 @@ Ok I just assured that you couldn't allocated 800 GB.
 
 
 ================================================================================================================
-Test 6: Test large amount of data --> Runtime error occurred (Exit code: 1)
+Test 6: Test large amount of data --> Runtime error occurred (Exit code: -11)
 Although you got no points from this test, below is the output of the test (STDOUT):
 ----------<BEGIN AUTO GENERATED OUTPUT>-----------
 
 Ok I just assured that you couldn't allocated 800 GB.
 You passed the first step...
-Maybe fusion is not working!
 
 -----------<END AUTO GENERATED OUTPUT>------------
 ================================================================================================================
@@ -79,21 +79,17 @@ Step 1 failed: I guess fusion isn't working properly.
 
 
 ================================================================================================================
-Test 8: Realloc simple test --> Runtime error occurred (Exit code: -11)
-Although you got no points from this test, below is the output of the test (STDOUT):
-----------<BEGIN AUTO GENERATED OUTPUT>-----------
-
-
------------<END AUTO GENERATED OUTPUT>------------
+Test 8: Realloc simple test --> OK! 6.1 points; Afarin!!!
 ================================================================================================================
 
 
 ================================================================================================================
-Test 9: Realloc complicated test --> Runtime error occurred (Exit code: -11)
+Test 9: Realloc complicated test --> Runtime error occurred (Exit code: 1)
 Although you got no points from this test, below is the output of the test (STDOUT):
 ----------<BEGIN AUTO GENERATED OUTPUT>-----------
 
 Ok I just assured that you couldn't allocated 800 GB.
+You must have been able to realloc
 
 -----------<END AUTO GENERATED OUTPUT>------------
 ================================================================================================================
@@ -111,4 +107,4 @@ Now we're gonna test with some reallocs!
 -----------<END AUTO GENERATED OUTPUT>------------
 ================================================================================================================
 
-Your final grade is: 4.5/100.0epoch: 1650477554
+Your final grade is: 10.6/100.0epoch: 1650478283
