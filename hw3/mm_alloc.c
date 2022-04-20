@@ -46,8 +46,10 @@ s_block_ptr extend_heap (s_block_ptr last , size_t s) {
 }
 
 void split_block (s_block_ptr b, size_t s) {
-  if(b->size <= s + BLOCK_SIZE) // Cannot split block
+  if(b->size <= s + BLOCK_SIZE) { // Cannot split block
+    memset(b->data, 0, b->size);
     return;
+  }
   
   s_block_ptr second_block = &(b->data[s]); // Keep s bytes for current block
 
