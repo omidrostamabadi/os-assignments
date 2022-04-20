@@ -54,7 +54,7 @@ void split_block (s_block_ptr b, size_t s) {
   second_block->is_free = TRUE; // Mark new block as is_free
 
   /* Update size of blocks properly */
-  second_block->size = b->size - s;
+  second_block->size = b->size - s - BLOCK_SIZE;
   b->size = s;
 
   /* Put new block as the next block of current block being split */
