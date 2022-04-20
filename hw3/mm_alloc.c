@@ -68,7 +68,11 @@ s_block_ptr fusion(s_block_ptr b) {
   if(b->next != NULL) {
     if(b->next->is_free == TRUE) {
       size_t next_size = b->next->size;
-      b->next = b->next->next;
+      s_block_ptr past_next = b->next->next;
+      if(past_next != NULL) {
+        b->next = past_next;
+        past_next->prev = b;
+      }
       /* Accumulate data segments, and also mix two meta data as one,
       so BLOCK_SIZE bytes will be added to the final size */
       b->size = b->size + next_size + BLOCK_SIZE;
@@ -79,7 +83,11 @@ s_block_ptr fusion(s_block_ptr b) {
   if(b->prev != NULL) {
     if(b->prev->is_free == TRUE) {
       size_t prev_size = b->prev->size;
-      b->prev = b->prev->prev;
+      s_block_ptr pre_prev;
+      if(pre_prev != NULL) {
+        b->prev = pre_prev;
+        pre_prev->next = b;
+      }
       b->size = b->size + prev_size + BLOCK_SIZE;
     }
   }
