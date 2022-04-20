@@ -37,7 +37,8 @@ s_block_ptr extend_heap (s_block_ptr last , size_t s) {
   
   /* Add the block to heap linked list before returning */
   new_block->is_free = TRUE;
-  new_block->prev = NULL;
+  new_block->next = NULL;
+  new_block->prev = last;
   new_block->size = s;
   last->next = new_block;
 
