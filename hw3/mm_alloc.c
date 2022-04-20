@@ -83,6 +83,9 @@ s_block_ptr fusion(s_block_ptr b) {
       so BLOCK_SIZE bytes will be added to the final size */
       b->size = b->size + next_size + BLOCK_SIZE;
     }
+    else {
+      break;
+    }
   }
 
   /* Try fusion with previous neighbour */
@@ -95,6 +98,9 @@ s_block_ptr fusion(s_block_ptr b) {
         pre_prev->next = b;
       }
       b->size = b->size + prev_size + BLOCK_SIZE;
+    }
+    else {
+      break;
     }
   }
   
