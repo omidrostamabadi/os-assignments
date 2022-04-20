@@ -17,8 +17,6 @@
 /* Your final implementation should comment out this macro. */
 //#define MM_USE_STUBS
 
-#define PAGE_SIZE 4096
-
 /* Start of the list managed by memory allocator */
  s_block_ptr start_list = NULL;
 
@@ -95,7 +93,7 @@ s_block_ptr get_block (void *p) {
 s_block_ptr get_free_block(size_t size) {
   if(start_list == NULL) { // First call to mm_malloc
 
-    start_list = sbrk(PAGE_SIZE);
+    start_list = sbrk(size + BLOCK_SIZE);
 
     if(start_list == (void*)-1) // sbrk failed
       return NULL;

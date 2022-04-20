@@ -7,7 +7,7 @@ int main(int argc, char **argv)
 {
     int *data;
 
-   data = (int*) mm_malloc(8);
+   data = (int*) mm_malloc(8000);
    data[0] = 68;
    data[1] = 78;
    printf("data %d %d\n", data[0], data[1]);
