@@ -67,18 +67,20 @@ s_block_ptr fusion(s_block_ptr b) {
   /* Try fusion with next neighbour */
   if(b->next != NULL) {
     if(b->next->is_free == TRUE) {
+      size_t next_size = b->next->size;
       b->next = b->next->next;
       /* Accumulate data segments, and also mix two meta data as one,
       so BLOCK_SIZE bytes will be added to the final size */
-      b->size = b->size + b->next->size + BLOCK_SIZE;
+      b->size = b->size + next_size + BLOCK_SIZE;
     }
   }
 
   /* Try fusion with previous neighbour */
   if(b->prev != NULL) {
     if(b->prev->is_free == TRUE) {
+      size_t prev_size = b->prev->size;
       b->prev = b->prev->prev;
-      b->size = b->size + b->prev->size + BLOCK_SIZE;
+      b->size = b->size + prev_size + BLOCK_SIZE;
     }
   }
   
@@ -132,12 +134,9 @@ s_block_ptr get_free_block(size_t size) {
     s_block_ptr new_block = extend_heap(first_fit, size);
     if(new_block == NULL)
       return NULL;
-    
-    first_fit->next = new_block;
-    new_block->prev = first_fit;
-    new_block->size = size;
+
     new_block->is_free = FALSE;
-    new_block->next = NULL;
+
     return new_block;
   }
 
