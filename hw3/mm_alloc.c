@@ -49,7 +49,7 @@ void split_block (s_block_ptr b, size_t s) {
   if(b->size <= s + BLOCK_SIZE) // Cannot split block
     return;
   
-  s_block_ptr second_block = b->data[s]; // Keep s bytes for current block
+  s_block_ptr second_block = &(b->data[s]); // Keep s bytes for current block
 
   second_block->is_free = TRUE; // Mark new block as is_free
 
