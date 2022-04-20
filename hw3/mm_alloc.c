@@ -58,9 +58,13 @@ void split_block (s_block_ptr b, size_t s) {
   b->size = s;
 
   /* Put new block as the next block of current block being split */
-  second_block->next = b->next;
-  b->next = second_block;
+  s_block_ptr past_b = b->next;
+  second_block->next = past_b;
   second_block->prev = b;
+  b->next = second_block;
+  if(past_b != NULL) {
+    past_b->prev = second_block;
+  }
 }
 
 s_block_ptr fusion(s_block_ptr b) {
