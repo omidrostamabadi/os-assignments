@@ -98,19 +98,15 @@ s_block_ptr fusion(s_block_ptr b) {
 
   /* Try fusion with previous neighbour */
   if(b->prev != NULL) {
-    s_block_ptr fusioned = b->prev;
+    s_block_ptr pre_b = b->prev;
     if(b->prev->is_free == TRUE) {
-      size_t prev_size = b->prev->size;
-      s_block_ptr pre_prev = b->prev->prev;
-      b->prev = pre_prev;
-      if(pre_prev != NULL) {
-        pre_prev->next = b;
+      size_t b_size = b->size;
+      s_block_ptr past_b = b->next;
+      pre_b->next = past_b;
+      if(past_b != NULL) {
+        past_b->prev = pre_b;
       }
-      b->size = b->size + prev_size + BLOCK_SIZE;
-
-      /* Handle a special case if prev is start_list */
-      if(fusioned == start_list)
-        start_list = b;
+      pre_b->size = b_size + pre_b->size + BLOCK_SIZE;
     }
     // else {
     //   break;
