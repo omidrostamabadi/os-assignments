@@ -36,6 +36,10 @@ s_block_ptr extend_heap (s_block_ptr last , size_t s) {
   /* Request allocation of the new block */
   s_block_ptr new_block = sbrk(s + BLOCK_SIZE);
 
+  if(new_block == (void*)-1) {
+    return NULL;
+  }
+
   if(new_block == (void*)-1) // Cannot extend heap
     return NULL;
   
@@ -122,8 +126,10 @@ s_block_ptr get_free_block(size_t size) {
 
     start_list = sbrk(size + BLOCK_SIZE);
 
-    if(start_list == (void*)-1) // sbrk failed
+    if(start_list == (void*)-1) {// sbrk failed
+      start_list = NULL;
       return NULL;
+    }
     
     /* Set meta data of the struct */
     start_list->size = size;
