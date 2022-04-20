@@ -1,4 +1,4 @@
-I finished judging your code on 20-04-2022 at 17:53:39.
+I finished judging your code on 20-04-2022 at 17:59:14.
 
 I ran your code on each test case separately! You can see the results below:
 
@@ -111,4 +111,4 @@ Now we're gonna test with some reallocs!
 -----------<END AUTO GENERATED OUTPUT>------------
 ================================================================================================================
 
-Your final grade is: 4.5/100.0epoch: 1650477219
+Your final grade is: 4.5/100.0epoch: 1650477554
