@@ -98,6 +98,7 @@ s_block_ptr fusion(s_block_ptr b) {
 
   /* Try fusion with previous neighbour */
   while(b->prev != NULL) {
+    s_block_ptr fusioned = b->prev;
     if(b->prev->is_free == TRUE) {
       size_t prev_size = b->prev->size;
       s_block_ptr pre_prev = b->prev->prev;
@@ -106,6 +107,10 @@ s_block_ptr fusion(s_block_ptr b) {
         pre_prev->next = b;
       }
       b->size = b->size + prev_size + BLOCK_SIZE;
+
+      /* Handle a special case if prev is start_list */
+      if(fusioned == start_list)
+        start_list = b;
     }
     else {
       break;
