@@ -79,7 +79,7 @@ void split_block (s_block_ptr b, size_t s) {
 
 s_block_ptr fusion(s_block_ptr b) {
   /* Try fusion with next neighbour */
-  while(b->next != NULL) {
+  if(b->next != NULL) {
     if(b->next->is_free == TRUE) {
       size_t next_size = b->next->size;
       s_block_ptr past_next = b->next->next;
@@ -91,13 +91,13 @@ s_block_ptr fusion(s_block_ptr b) {
       so BLOCK_SIZE bytes will be added to the final size */
       b->size = b->size + next_size + BLOCK_SIZE;
     }
-    else {
-      break;
-    }
+    // else {
+    //   break;
+    // }
   }
 
   /* Try fusion with previous neighbour */
-  while(b->prev != NULL) {
+  if(b->prev != NULL) {
     s_block_ptr fusioned = b->prev;
     if(b->prev->is_free == TRUE) {
       size_t prev_size = b->prev->size;
@@ -112,9 +112,9 @@ s_block_ptr fusion(s_block_ptr b) {
       if(fusioned == start_list)
         start_list = b;
     }
-    else {
-      break;
-    }
+    // else {
+    //   break;
+    // }
   }
   
   return b;
