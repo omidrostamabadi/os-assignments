@@ -92,18 +92,9 @@ s_block_ptr get_block (void *p) {
 }
 
 s_block_ptr get_free_block(size_t size) {
-  if(start_list == NULL) { // First call to malloc
-    // s_block_ptr test_ptr = sbrk(0); // This call is needed, don't know why!
-    // printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
+  if(start_list == NULL) { // First call to mm_malloc
 
     start_list = sbrk(PAGE_SIZE);
-    printf("Start_list: %lx\n", (u_int64_t)start_list);
-
-    // test_ptr = sbrk(0); // This call is needed, don't know why!
-    // printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
-
-    // test_ptr = &(start_list->free);
-    // printf("Address of free: %lx\n", (u_int64_t)test_ptr);
 
     if(start_list == (void*)-1) // sbrk failed
       return NULL;
@@ -154,16 +145,7 @@ s_block_ptr get_free_block(size_t size) {
 
 void* mm_malloc(size_t size)
 {
-#ifdef MM_USE_STUBS
-    return calloc(1, size);
-#else
-  // struct rlimit rlim;
-  // if(getrlimit(RLIMIT_DATA, &rlim)) printf("ERRR\n");
-
-  // printf("RLIM: curr: %ld  max: %ld\n", rlim.rlim_cur, rlim.rlim_max);
-
   char *test_ptr = sbrk(0);
-  printf("Start of heap: %lx\n", (u_int64_t)test_ptr);
 
   if(size == 0)
     return NULL;
@@ -176,10 +158,8 @@ void* mm_malloc(size_t size)
     return NULL;
   
   memset(free_block->data, 0, size); // Zero fill new block
-  printf("Address of free block: %lx (data = %lx)\n", 
-  (u_int64_t)free_block, (u_int64_t)&(free_block->data));
+
   return (void*)(free_block->data);
-#endif
 }
 
 /* 
@@ -188,9 +168,6 @@ void* mm_malloc(size_t size)
 */
 void* mm_realloc(void* ptr, size_t size)
 {
-#ifdef MM_USE_STUBS
-    return realloc(ptr, size);
-#else
 if(size == 0) {
   mm_free(ptr);
   return NULL;
@@ -222,23 +199,14 @@ else {
 mm_free(ptr);
 
 return sec_ptr;
-
-
-#endif
 }
 
 void mm_free(void* ptr)
 {
-#ifdef MM_USE_STUBS
-    free(ptr);
-#else
   if(ptr == NULL)
     return;
   
   s_block_ptr block_to_free = get_block(ptr);
-  printf("Address of block to free: %lx (data = %lx)\n", 
-  (u_int64_t)block_to_free, (u_int64_t)&(block_to_free->data));
   block_to_free->free = TRUE;
   fusion(block_to_free);
-#endif
 }
