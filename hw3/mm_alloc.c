@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 /* Your final implementation should comment out this macro. */
 //#define MM_USE_STUBS
